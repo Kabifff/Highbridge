@@ -51,7 +51,7 @@ fun WelcomeScreen() {
             Text("WEST 7TH · SAINT PAUL", color = StPaulMeshPalette.SchmidtBrick, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.6.sp)
             Text("Highbridge", style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
             Text("One bridge for every mesh.", fontFamily = DisplayFont, fontStyle = FontStyle.Italic, fontSize = 20.sp)
-            Text("Meshtastic, MeshCore and Reticulum in one app. Made on Fort Road in Saint Paul, and it works on any LoRa band in the world.",
+            Text("${if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) "Meshtastic, MeshCore and Reticulum" else "Meshtastic and MeshCore"} in one app. Made on Fort Road in Saint Paul, and it works on any LoRa band in the world.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.height(8.dp))
             Button(onClick = { app.prefs.setOnboarded(true); nav.navigate("radio") { popUpTo("welcome") { inclusive = true } } },

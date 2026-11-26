@@ -4,3 +4,9 @@ local.properties
 .idea/
 *.iml
 .cxx/
+
+# Release signing (never commit)
+keystore.properties
+*.jks
+*.keystore
+__pycache__/

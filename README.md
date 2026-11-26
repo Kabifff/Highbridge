@@ -11,7 +11,7 @@ It's named for Saint Paul's High Bridge, which joins the West 7th neighborhood t
 - **Three protocols in one app**
   - Meshtastic over Bluetooth LE and USB-C (official protobufs)
   - MeshCore companion radios over Bluetooth LE and USB-C
-  - Reticulum and LXMF, running the official RNS and LXMF Python packages inside the app (Chaquopy). These are a one-time download (see License)
+  - Reticulum and LXMF (full edition), running the official RNS and LXMF Python packages inside the app (Chaquopy). These are a one-time download (see License)
   - Reticulum can use an RNode over USB-C or Bluetooth, Wi-Fi (AutoInterface) or TCP
 - **USB-C auto-detect.** Plug a radio in and Highbridge works out whether it runs Meshtastic, MeshCore or RNode firmware.
 - **Worldwide regions**
@@ -59,18 +59,34 @@ It's named for Saint Paul's High Bridge, which joins the West 7th neighborhood t
   - GPS every 35 s (Fast) or every 5 min (Battery Saving)
   - Performance, Balanced and Ultra-Low Power profiles, with an automatic switch at low battery
 
+## Editions
+
+| Edition | Networks | Where | Build task |
+|---|---|---|---|
+| **Full** | Meshtastic, MeshCore, Reticulum | GitHub releases | `assembleFullRelease` |
+| **Lite** | Meshtastic, MeshCore | Google Play, F-Droid | `bundleLiteRelease` (Play), `assembleLiteRelease` |
+
+Lite leaves out the Python runtime and never downloads code, which app stores require. Both
+editions share the app ID `com.stpaulmesh.highbridge`.
+
 ## Build
 
-Requires JDK 17+, the Android SDK (platform 35, build-tools, NDK 28.2.13676358, CMake 3.22.1), and Python 3.12 on the build machine for Chaquopy.
+Requires JDK 17+, the Android SDK (platform 36, build-tools 36, NDK 28.2.13676358, CMake 3.22.1). The full edition also needs Python 3.12 on the build machine for Chaquopy.
 
 ```
-./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
-./gradlew :app:testDebugUnitTest
+./gradlew assembleFullDebug assembleLiteDebug
+./gradlew :app:testLiteDebugUnitTest
 ```
 
-If Python 3.12 isn't at `/usr/bin/python3.12`, change `buildPython` in `app/build.gradle.kts`.
+If Python 3.12 isn't at `/usr/bin/python3.12`, change `buildPython` in `rns-python/build.gradle.kts`.
 
-The app targets arm64 phones (almost every Android phone from the last several years).
+The app targets arm64 phones (almost every Android phone from the last several years). Native libraries are 16 KB page aligned.
+
+### Release signing
+
+Copy `keystore.properties.example` to `keystore.properties` and fill it in, or set
+`HB_KEYSTORE`, `HB_KEYSTORE_PASSWORD`, `HB_KEY_ALIAS` and `HB_KEY_PASSWORD`. Neither the key nor
+that file is ever committed. Without them, release builds are unsigned.
 
 ## Project layout
 
@@ -82,7 +98,8 @@ The app targets arm64 phones (almost every Android phone from the last several y
 | `protocol-reticulum` | KISS / RNode control and the Reticulum client (Python engine interface) |
 | `core-media` | Media framing, image compression, Codec2 (C sources + JNI), voice recording |
 | `feature-bridge` | Bridge engine and background service |
-| `app` | Screens, database, radio manager, field tools, flashers, Python engine (`src/main/python`) |
+| `rns-python` | Python runtime and Reticulum engine glue (full edition only) |
+| `app` | Screens, database, radio manager, field tools, flashers; `src/full` and `src/lite` hold the edition switches |
 
 ## License
 
@@ -93,7 +110,7 @@ Everything bundled in the source and the app uses a GPL-3.0-compatible license:
 - Meshtastic protobufs: GPL-3.0
 - Codec2: LGPL-2.1
 - Apache-2.0, MIT and BSD libraries
-- Python: PSF
+- Python (full edition): PSF
 
 `THIRD_PARTY_NOTICES.md` lists each component with its version and copyright. The full license texts are in `app/src/main/assets/licenses/` and in the app under **Settings › Open-source licenses**.
 

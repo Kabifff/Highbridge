@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
-package org.highbridge.app.rns
+package org.highbridge.rns
 
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
@@ -22,10 +22,11 @@ object RnsBridge {
 }
 
 /** Runs the real Reticulum (RNS) and LXMF Python packages inside the app. */
-class ChaquopyRnsEngine : RnsEngine {
+class ChaquopyRnsEngine(context: android.content.Context) : RnsEngine {
+    private val ctx = context.applicationContext
     private val mod: PyObject by lazy {
         // Started on first use (not at app launch) so opening the app stays fast for people who don't use Reticulum.
-        if (!Python.isStarted()) Python.start(com.chaquo.python.android.AndroidPlatform(org.highbridge.app.HighbridgeApp.instance))
+        if (!Python.isStarted()) Python.start(com.chaquo.python.android.AndroidPlatform(ctx))
         Python.getInstance().getModule("highbridge_rns")
     }
 
@@ -37,7 +38,6 @@ class ChaquopyRnsEngine : RnsEngine {
         set(v) { RnsBridge.writer = v }
 
     override fun start(o: RnsEngine.StartOptions): String {
-        val ctx = org.highbridge.app.HighbridgeApp.instance
         check(RnsInstaller.isInstalled(ctx)) { "Reticulum isn't downloaded yet. Open Connect a radio › Reticulum to get it." }
         mod.callAttr("set_ext_path", RnsInstaller.dir(ctx).absolutePath)
         return mod.callAttr("start", o.configDir, o.autoInterface, o.tcpHosts.joinToString(","), o.useRNode, o.rnodeBitrate, o.displayName).toString()

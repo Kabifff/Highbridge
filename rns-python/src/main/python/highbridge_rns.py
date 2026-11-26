@@ -3,7 +3,7 @@
 """Reticulum / LXMF engine for Highbridge, run inside the app through Chaquopy.
 
 Kotlin calls the functions at the bottom of this file. Events go back through the Java class
-org.highbridge.app.rns.RnsBridge.
+org.highbridge.rns.RnsBridge.
 
 The RNS and LXMF packages are NOT shipped inside Highbridge: their Reticulum License adds use
 restrictions that the GPL doesn't allow in a combined work. The app downloads them from PyPI
@@ -70,7 +70,7 @@ class HighbridgeRNodeInterface(Interface):
         if not self.online:
             return
         from java import jclass
-        jclass("org.highbridge.app.rns.RnsBridge").rnodeWrite(bytes(data))
+        jclass("org.highbridge.rns.RnsBridge").rnodeWrite(bytes(data))
         self.txb += len(data)
 
     def should_ingress_limit(self):
@@ -86,7 +86,7 @@ interface_class = HighbridgeRNodeInterface
 def _b():
     global _bridge
     if _bridge is None:
-        _bridge = jclass("org.highbridge.app.rns.RnsBridge")
+        _bridge = jclass("org.highbridge.rns.RnsBridge")
     return _bridge
 
 

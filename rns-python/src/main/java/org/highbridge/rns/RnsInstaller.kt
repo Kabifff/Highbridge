@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
-package org.highbridge.app.rns
+package org.highbridge.rns
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers

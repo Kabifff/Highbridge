@@ -121,7 +121,7 @@ fun MapScreen() {
             }
         })
         LazyRow(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(ProtocolType.entries) { p -> FilterChip(p in filter, { filter = if (p in filter) filter - p else filter + p }, { Text(p.shortTag) }) }
+            items(supportedProtocols) { p -> FilterChip(p in filter, { filter = if (p in filter) filter - p else filter + p }, { Text(p.shortTag) }) }
             item { FilterChip(rings, { rings = !rings }, { Text("Signal rings") }) }
             item { FilterChip(heatmap, { heatmap = !heatmap }, { Text("Range test") }) }
             item { FilterChip(hideStale, { hideStale = !hideStale }, { Text("Hide stale") }) }

@@ -43,7 +43,7 @@ import org.highbridge.app.pro.AirtimeMonitor
 import org.highbridge.app.pro.AtakCotBridge
 import org.highbridge.app.pro.GeofenceRules
 import org.highbridge.app.pro.Geo
-import org.highbridge.app.rns.ChaquopyRnsEngine
+import org.highbridge.app.rns.ReticulumSupport
 import org.highbridge.core.media.LoRaImageCompressor
 import org.highbridge.core.media.MediaTransferManager
 import org.highbridge.core.media.MediaType
@@ -103,7 +103,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     @Volatile var openConversation: String? = null
 
     val media = MediaTransferManager({ _radios.value }, { if (prefs.powerProfile.value.allowBridgeMedia) 3_000L else 6_000L })
-    private val rnsEngine: RnsEngine by lazy { ChaquopyRnsEngine() }
+    private val rnsEngine: RnsEngine by lazy { ReticulumSupport.engine(ctx) }
 
     @Volatile var recordingTrackId: Long? = null
         private set
@@ -161,7 +161,8 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     private var multicastLock: android.net.wifi.WifiManager.MulticastLock? = null
 
     private fun reticulumRadio(rnodeLink: StreamLink?): ReticulumRadio {
-        check(org.highbridge.app.rns.RnsInstaller.isInstalled(ctx)) {
+        check(ReticulumSupport.AVAILABLE) { "This edition of Highbridge doesn't include Reticulum." }
+        check(ReticulumSupport.isInstalled(ctx)) {
             "Reticulum needs a one-time download first. Open Connect a radio › Reticulum."
         }
         if (prefs.rnsAuto.value && multicastLock == null) runCatching {

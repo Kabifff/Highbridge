@@ -36,11 +36,18 @@ The Codec2 files are unmodified copies from https://github.com/drowe67/codec2. T
 | zxing-android-embedded | 4.3.0 | Apache-2.0 | JourneyApps |
 | usb-serial-for-android | 3.8.1 | MIT | Google Inc.; Mike Wakerly |
 | Nordic Android DFU Library | 2.5.0 | BSD-3-Clause | Nordic Semiconductor |
-| Chaquopy runtime | 16.1.0 | MIT | Chaquo Ltd and contributors |
-| Python | 3.12 | PSF-2.0 (GPL-compatible) | Python Software Foundation |
-| OpenSSL, bundled with Python | 3.0.15 | Apache-2.0 | The OpenSSL Project Authors |
-| SQLite, bundled with Python | — | Public domain | — |
-| pySerial | 3.5 | BSD-3-Clause | Chris Liechti |
+| Chaquopy runtime (full edition only) | 17.2.0 | MIT | Chaquo Ltd and contributors |
+| Python (full edition only) | 3.12.15 | PSF-2.0 (GPL-compatible) | Python Software Foundation |
+| OpenSSL, bundled with Python (full edition only) | 3.5.9 | Apache-2.0 | The OpenSSL Project Authors |
+| SQLite, bundled with Python (full edition only) | — | Public domain | — |
+| pySerial (full edition only) | 3.5 | BSD-3-Clause | Chris Liechti |
+
+## Two editions
+
+- **Full** (GitHub releases): Meshtastic, MeshCore and Reticulum. Includes the Python runtime
+  and pySerial listed above.
+- **Lite** (Google Play and F-Droid): Meshtastic and MeshCore only. No Python, nothing marked
+  "full edition only" above, and no code is ever downloaded.
 
 ## Not included: Reticulum (RNS) and LXMF
 
@@ -52,9 +59,9 @@ app.
 
 When a user turns Reticulum on, the app shows that license and asks first. Only after the user
 agrees does it download the two packages from PyPI onto that phone, checked against fixed
-SHA-256 sums (`app/src/main/java/org/highbridge/app/rns/RnsInstaller.kt`).
+SHA-256 sums (`rns-python/src/main/java/org/highbridge/rns/RnsInstaller.kt`).
 
-Highbridge's own Reticulum glue code (`app/src/main/python/highbridge_rns.py`) is GPL-3.0-or-later.
+Highbridge's own Reticulum glue code (`rns-python/src/main/python/highbridge_rns.py`) is GPL-3.0-or-later.
 
 ## Data
 

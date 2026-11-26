@@ -77,7 +77,7 @@ fun NodesScreen() {
         HbHeader("Nodes", "${shown.size} heard in the last ${stale / 60} h")
         LazyRow(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item { FilterChip(filter == null, { filter = null }, { Text("All") }) }
-            items(ProtocolType.entries) { p -> FilterChip(filter == p, { filter = p }, { Text("${p.shortTag} ${nodes.count { it.protocol == p.name }}") }) }
+            items(supportedProtocols) { p -> FilterChip(filter == p, { filter = p }, { Text("${p.shortTag} ${nodes.count { it.protocol == p.name }}") }) }
             item { FilterChip(showStale, { showStale = !showStale }, { Text("Include stale") }) }
         }
         if (shown.isEmpty()) EmptyState("No nodes yet", "Nodes appear as your radios hear them. Try sending an advert or a message.")

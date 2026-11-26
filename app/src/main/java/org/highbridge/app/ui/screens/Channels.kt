@@ -80,7 +80,7 @@ fun ChannelsScreen(importUri: String?) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 HbCard {
                     Text("New private channel", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ProtocolType.entries.forEach { p -> FilterChip(proto == p, { proto = p }, { Text(p.shortTag) }) } }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { supportedProtocols.forEach { p -> FilterChip(proto == p, { proto = p }, { Text(p.shortTag) }) } }
                     Text(when (proto) {
                         ProtocolType.MESHTASTIC -> "256-bit AES key, slots 1–7 (slot 0 is your primary channel)"
                         ProtocolType.MESHCORE -> "128-bit key (the most MeshCore firmware accepts)"

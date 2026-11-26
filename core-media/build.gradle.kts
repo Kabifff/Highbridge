@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "org.highbridge.core.media"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         minSdk = 26
         ndk { abiFilters += listOf("arm64-v8a") }

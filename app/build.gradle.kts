@@ -1,31 +1,67 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
-    id("com.chaquo.python")
 }
+
+// Release signing. The key never goes in git: put its details in keystore.properties (git-ignored,
+// see keystore.properties.example) or in HB_KEYSTORE / HB_KEYSTORE_PASSWORD / HB_KEY_ALIAS /
+// HB_KEY_PASSWORD environment variables. Without them, release builds come out unsigned (F-Droid
+// signs its own builds).
+val keystoreProps = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+fun secret(key: String, env: String): String? = keystoreProps.getProperty(key) ?: System.getenv(env)
+val releaseKeystore = secret("storeFile", "HB_KEYSTORE")?.let { rootProject.file(it) }?.takeIf { it.exists() }
 
 android {
     namespace = "org.highbridge.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "org.highbridge.app"
+        applicationId = "com.stpaulmesh.highbridge"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1"
+        targetSdk = 36
+        versionCode = 3
+        versionName = "0.2.0"
         ndk { abiFilters += listOf("arm64-v8a") }
+    }
+
+    signingConfigs {
+        if (releaseKeystore != null) create("release") {
+            storeFile = releaseKeystore
+            storePassword = secret("storePassword", "HB_KEYSTORE_PASSWORD")
+            keyAlias = secret("keyAlias", "HB_KEY_ALIAS")
+            keyPassword = secret("keyPassword", "HB_KEY_PASSWORD")
+        }
+    }
+
+    // Two editions from one codebase:
+    //  full: Meshtastic, MeshCore and Reticulum (Python runtime; RNS downloaded with consent). GitHub releases.
+    //  lite: Meshtastic and MeshCore only, with no Python and no downloaded code. Google Play and F-Droid.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("full") { dimension = "edition" }
+        create("lite") { dimension = "edition" }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
+    }
+
+    // F-Droid rejects the encrypted dependency block in APKs; Play may keep it in bundles.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -37,19 +73,6 @@ android {
     testOptions { unitTests.isReturnDefaultValues = true }
 }
 
-chaquopy {
-    defaultConfig {
-        version = "3.12"
-        buildPython("/usr/bin/python3.12")
-        pip {
-            // Only BSD-licensed pyserial is bundled. RNS and LXMF (Reticulum License, which adds use
-            // restrictions the GPL doesn't allow) are downloaded by the user on first use: see RnsInstaller.
-            // RNS falls back to its built-in pure-Python crypto when the "cryptography" package is absent.
-            install("pyserial==3.5")
-        }
-    }
-}
-
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 dependencies {
@@ -59,6 +82,7 @@ dependencies {
     implementation(project(":protocol-meshtastic"))
     implementation(project(":protocol-meshcore"))
     implementation(project(":protocol-reticulum"))
+    "fullImplementation"(project(":rns-python"))
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")

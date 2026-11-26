@@ -231,13 +231,13 @@ fun BridgeScreen() {
                 HbCard {
                     BridgeSpans(pairs)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf(ProtocolType.MESHTASTIC, ProtocolType.MESHCORE, ProtocolType.RETICULUM).forEach { p ->
+                        supportedProtocols.forEach { p ->
                             Text("${p.shortTag} ${if (radios.containsKey(p)) "connected" else "offline"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
                 SectionLabel("Which networks", Modifier.padding(0.dp))
-                BridgeMode.entries.forEach { m ->
+                supportedBridgeModes.forEach { m ->
                     Row(Modifier.fillMaxWidth().clickable {
                         mode = m; BridgeModeStore.mode = m; engine?.setBridgeMode(m)
                     }, verticalAlignment = Alignment.CenterVertically) { RadioButton(mode == m, { mode = m; BridgeModeStore.mode = m; engine?.setBridgeMode(m) }); Text(m.label) }
@@ -299,7 +299,7 @@ fun ConnectScreen() {
                 Column(Modifier.weight(1f)) { Text(f.name, fontWeight = FontWeight.Bold); Text("${f.device.address} · ${f.rssi} dBm", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (busy == f.device.address) Text("Connecting…", fontSize = 12.sp)
                 DropdownMenu(pick, { pick = false }) {
-                    ProtocolType.entries.forEach { p ->
+                    supportedProtocols.forEach { p ->
                         DropdownMenuItem({ Text("Connect as ${p.name.lowercase().replaceFirstChar { it.uppercase() }}${if (p == ProtocolType.RETICULUM) " (RNode)" else ""}${if (p == f.guess) " ✓" else ""}") }, {
                             pick = false; busy = f.device.address
                             scope.launch {
@@ -338,14 +338,14 @@ fun ConnectScreen() {
             }
         }
         item { TextButton(onClick = { usbList = UsbDevices.drivers(ctx.getSystemService(UsbManager::class.java)) }, Modifier.padding(horizontal = 12.dp)) { Text("Refresh USB list") } }
-        item { SectionLabel("Reticulum") }
-        item {
-            var installed by remember { mutableStateOf(org.highbridge.app.rns.RnsInstaller.isInstalled(ctx)) }
+        if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) item { SectionLabel("Reticulum") }
+        if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) item {
+            var installed by remember { mutableStateOf(org.highbridge.app.rns.ReticulumSupport.isInstalled(ctx)) }
             var askDownload by remember { mutableStateOf(false) }
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Talk to Sideband, MeshChat and NomadNet users through an RNode, on the same Wi-Fi (AutoInterface), or through TCP hosts set in Settings.", style = MaterialTheme.typography.bodyMedium)
                 if (!installed) {
-                    Text("Reticulum support needs a one-time download (about ${org.highbridge.app.rns.RnsInstaller.DOWNLOAD_KB} KB).", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Reticulum support needs a one-time download (about ${org.highbridge.app.rns.ReticulumSupport.DOWNLOAD_KB} KB).", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { askDownload = true }) { Text(if (busy == "dl") "Downloading…" else "Get Reticulum") }
                 } else Button(onClick = { busy = "rns"; scope.launch { val r = app.radios.startReticulumNetworkOnly(); busy = null; ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "Reticulum started") } }) {
                     Text(if (busy == "rns") "Starting…" else "Start Reticulum")
@@ -357,14 +357,14 @@ fun ConnectScreen() {
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Highbridge talks to Reticulum using the official RNS and LXMF packages by Mark Qvist. They aren't built into Highbridge, because their license (the Reticulum License) has rules the GPL doesn't allow inside a GPL app.")
                     Text("That license lets you use them freely, except in systems meant to purposely harm people, or to build AI or machine-learning training datasets. By downloading, you agree to it.")
-                    TextButton(onClick = { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(org.highbridge.app.rns.RnsInstaller.LICENSE_URL))) }) { Text("Read the Reticulum License") }
+                    TextButton(onClick = { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(org.highbridge.app.rns.ReticulumSupport.LICENSE_URL))) }) { Text("Read the Reticulum License") }
                     Text("Files come from PyPI (pypi.org) and are checked against fixed checksums.", fontSize = 12.sp)
                 } },
                 confirmButton = { TextButton(onClick = {
                     askDownload = false; busy = "dl"
                     scope.launch {
-                        val r = runCatching { org.highbridge.app.rns.RnsInstaller.install(ctx) }
-                        busy = null; installed = org.highbridge.app.rns.RnsInstaller.isInstalled(ctx)
+                        val r = runCatching { org.highbridge.app.rns.ReticulumSupport.install(ctx) }
+                        busy = null; installed = org.highbridge.app.rns.ReticulumSupport.isInstalled(ctx)
                         ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "Reticulum is ready")
                     }
                 }) { Text("I agree, download") } },
@@ -386,3 +386,8 @@ suspend fun requestUsbPermission(ctx: Context, device: UsbDevice): Boolean {
     usb.requestPermission(device, pi)
     return try { result.await() } finally { runCatching { ctx.unregisterReceiver(receiver) } }
 }
+
+/** Protocols this edition can talk to (the store edition has no Reticulum). */
+val supportedProtocols: List<ProtocolType> =
+    ProtocolType.entries.filter { it != ProtocolType.RETICULUM || org.highbridge.app.rns.ReticulumSupport.AVAILABLE }
+val supportedBridgeModes: List<BridgeMode> = BridgeMode.entries.filter { m -> m.activeProtocols.all { it in supportedProtocols } }

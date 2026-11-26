@@ -106,7 +106,7 @@ fun ToolsScreen() {
         "atak" to ("ATAK bridge" to "Send node positions to ATAK as Cursor on Target"),
         "airtime" to ("Airtime meter" to "How much of the legal duty cycle you've used"),
         "micron" to ("NomadNet browser" to "Read Micron pages from Reticulum nodes"),
-    )
+    ).filter { it.first != "micron" || org.highbridge.app.rns.ReticulumSupport.AVAILABLE }
     LazyColumn(Modifier.fillMaxSize()) {
         item { HbHeader("Field tools", "Work offline, anywhere", onBack = { nav.popBackStack() }) }
         items(tools) { (route, t) ->

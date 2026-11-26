@@ -147,7 +147,7 @@ fun SettingsScreen() {
                 Text("Appearance", fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("SYSTEM" to "Match phone", "LIGHT" to "Light", "DARK" to "Fort Road at night").forEach { (k, l) -> FilterChip(dark == k, { p.setDarkMode(k) }, { Text(l) }) } }
             }
-            HbCard {
+            if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) HbCard {
                 Text("Reticulum", fontWeight = FontWeight.Bold); Text("Changes here take effect the next time the app starts.", fontSize = 12.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) { Text("Find peers on Wi-Fi (AutoInterface)", Modifier.weight(1f)); Switch(rnsAuto, { p.setRnsAuto(it) }) }
                 var hosts by remember { mutableStateOf(tcp) }

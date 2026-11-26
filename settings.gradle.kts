@@ -15,5 +15,5 @@ dependencyResolutionManagement {
 rootProject.name = "Highbridge"
 include(
     ":app", ":core-protocol", ":core-media", ":feature-bridge",
-    ":protocol-meshtastic", ":protocol-meshcore", ":protocol-reticulum"
+    ":protocol-meshtastic", ":protocol-meshcore", ":protocol-reticulum", ":rns-python"
 )
