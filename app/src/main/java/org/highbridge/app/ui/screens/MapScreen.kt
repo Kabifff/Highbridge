@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.toast
 import android.graphics.Color as AColor
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -54,6 +54,7 @@ import org.highbridge.app.data.RangeTestEntity
 import org.highbridge.app.pro.Geo
 import org.highbridge.app.ui.HbHeader
 import org.highbridge.app.ui.theme.StPaulMeshPalette
+import org.highbridge.app.ui.theme.protocolColorOf
 import org.highbridge.app.ui.timeAgo
 import org.highbridge.core.protocol.ProtocolType
 import org.osmdroid.tileprovider.modules.OfflineTileProvider
@@ -101,7 +102,7 @@ fun MapScreen() {
         val f = File(dir, "imported.mbtiles")
         ctx.contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { i.copyTo(it) } }
         mbtiles = f; app.prefs.setMapStyle("MBTILES")
-        Toast.makeText(ctx, "Offline map imported", Toast.LENGTH_SHORT).show()
+        ctx.toast("Offline map imported")
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -115,7 +116,7 @@ fun MapScreen() {
                     menu = false
                     runCatching {
                         CacheManager(mapView).downloadAreaAsync(ctx, mapView.boundingBox, mapView.zoomLevelDouble.toInt(), (mapView.zoomLevelDouble + 2).toInt().coerceAtMost(16))
-                    }.onFailure { Toast.makeText(ctx, "This map's tile server doesn't allow bulk downloads. Import an .mbtiles file instead.", Toast.LENGTH_LONG).show() }
+                    }.onFailure { ctx.toast("This map's tile server doesn't allow bulk downloads. Import an .mbtiles file instead.", long = true) }
                 })
             }
         })
@@ -180,14 +181,11 @@ private fun dot(color: Int, sizePx: Int, square: Boolean = false) = GradientDraw
     setColor(color); setStroke(3, AColor.WHITE); setSize(sizePx, sizePx)
 }
 
-private fun protoColor(p: String) = when (p) {
-    "MESHTASTIC" -> StPaulMeshPalette.Meshtastic; "MESHCORE" -> StPaulMeshPalette.MeshCore; else -> StPaulMeshPalette.Reticulum
-}.toArgb()
 
 private fun nodeMarker(mv: MapView, n: NodeEntity, me: Pair<Double, Double>?, onOpen: () -> Unit) = Marker(mv).apply {
     position = GeoPoint(n.lat!!, n.lon!!)
     val repeater = n.longName.contains("repeater", true) || n.longName.contains("rptr", true)
-    icon = dot(protoColor(n.protocol), if (repeater) 30 else 26, square = repeater)
+    icon = dot(protocolColorOf(n.protocol).toArgb(), if (repeater) 30 else 26, square = repeater)
     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
     title = n.longName
     snippet = buildString {

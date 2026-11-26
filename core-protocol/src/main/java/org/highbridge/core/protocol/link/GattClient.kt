@@ -91,6 +91,8 @@ class GattClient(private val context: Context, private val device: BluetoothDevi
         }
         op<Any?>(15_000) { it!!.discoverServices() }
         runCatching { op<Int>(5_000) { it!!.requestMtu(requestMtu) } }
+        live += this
+        setConnectionPriority(preferredPriority)
     }
 
     /**
@@ -140,9 +142,10 @@ class GattClient(private val context: Context, private val device: BluetoothDevi
         return op { g -> g!!.readCharacteristic(c) }
     }
 
-    fun setConnectionPriority(priority: Int) { gatt?.requestConnectionPriority(priority) }
+    fun setConnectionPriority(priority: Int) { runCatching { gatt?.requestConnectionPriority(priority) } }
 
     fun close() {
+        live -= this
         runCatching { gatt?.disconnect() }
         runCatching { gatt?.close() }
         gatt = null
@@ -151,5 +154,13 @@ class GattClient(private val context: Context, private val device: BluetoothDevi
 
     companion object {
         val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+        private val live: MutableSet<GattClient> = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
+        @Volatile private var preferredPriority = BluetoothGatt.CONNECTION_PRIORITY_BALANCED
+
+        /** Applies a connection priority (see [org.highbridge.core.protocol.BlePriority]) to every open and future link. */
+        fun setPriorityForAll(priority: Int) {
+            preferredPriority = priority
+            live.forEach { it.setConnectionPriority(priority) }
+        }
     }
 }

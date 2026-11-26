@@ -110,8 +110,8 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
     override suspend fun disconnect() {
         heartbeat?.cancel()
         runCatching { link.send(ToRadio(disconnect = true).encode()) }
+        scope.cancel() // first, so the drop watcher doesn't report a user disconnect as an error
         link.close()
-        scope.cancel()
         _state.value = ConnectionState.Disconnected
     }
 

@@ -2,11 +2,11 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.toast
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.hardware.usb.UsbManager
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -160,7 +160,8 @@ private fun FlashTab() {
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
         val name = uri.lastPathSegment?.substringAfterLast('/') ?: "firmware.bin"
-        val bytes = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+        val bytes = runCatching { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+            ?: run { log.add("Couldn't read $name"); return@rememberLauncherForActivityResult }
         file = name to bytes
         kind = if (name.endsWith(".uf2", true)) "UF2" else "ESP32"
         offset = "0x%x".format(EspRomFlasher.offsetFor(name))
@@ -247,7 +248,7 @@ private fun DfuTab() {
         OutlinedButton(onClick = { pick.launch(arrayOf("application/zip", "application/octet-stream")) }) { Text(zip?.lastPathSegment ?: "Pick firmware .zip") }
         Button(enabled = address.length == 17 && zip != null, onClick = {
             BleDfu.start(ctx, address, null, zip!!)
-            Toast.makeText(ctx, "Update started; progress is in the notification", Toast.LENGTH_LONG).show()
+            ctx.toast("Update started; progress is in the notification", long = true)
         }) { Text("Start Bluetooth update") }
     }
 }
@@ -283,8 +284,8 @@ fun UpdatesScreen() {
                     TextButton(onClick = {
                         scope.launch {
                             runCatching { UpdateChecker.download(a, File(ctx.getExternalFilesDir(null), "firmware")) { dl = it } }
-                                .onSuccess { Toast.makeText(ctx, "Saved ${it.name}. Open USB-C & flashing to install it.", Toast.LENGTH_LONG).show(); dl = 0f }
-                                .onFailure { Toast.makeText(ctx, it.message, Toast.LENGTH_LONG).show() }
+                                .onSuccess { ctx.toast("Saved ${it.name}. Open USB-C & flashing to install it.", long = true); dl = 0f }
+                                .onFailure { ctx.toast(it.message, long = true) }
                         }
                     }) { Text("${a.name} · ${a.sizeBytes / 1024} KB", fontSize = 12.sp) }
                 }

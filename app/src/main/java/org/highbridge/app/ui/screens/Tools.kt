@@ -2,13 +2,13 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.toast
 import android.content.Context
 import android.content.Intent
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -84,6 +84,7 @@ import org.highbridge.app.ui.HbCard
 import org.highbridge.app.ui.HbHeader
 import org.highbridge.app.ui.SectionLabel
 import org.highbridge.app.ui.theme.StPaulMeshPalette
+import org.highbridge.app.ui.theme.protocolColorOf
 import org.highbridge.app.ui.timeAgo
 import org.highbridge.core.protocol.ProtocolType
 import java.io.File
@@ -129,9 +130,9 @@ fun CheckInScreen() {
         HbHeader("Check-in & SOS", "Sends on channel 0 of every connected radio", onBack = { nav.popBackStack() })
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(if (radios.isEmpty()) "Connect a radio first." else "Will send through ${radios.keys.joinToString { it.shortTag }}, with your location if the phone has one.")
-            Button(onClick = { scope.launch { val s = app.radios.broadcastStatus(false); Toast.makeText(ctx, if (s.isEmpty()) "Nothing sent" else "Check-in sent on ${s.joinToString()}", Toast.LENGTH_LONG).show() } },
+            Button(onClick = { scope.launch { val s = app.radios.broadcastStatus(false); ctx.toast(if (s.isEmpty()) "Nothing sent" else "Check-in sent on ${s.joinToString()}", long = true) } },
                 Modifier.fillMaxWidth().height(64.dp), enabled = radios.isNotEmpty()) { Text("I'm OK — check in", fontSize = 18.sp) }
-            Button(onClick = { if (confirmSos) { confirmSos = false; scope.launch { val s = app.radios.broadcastStatus(true); Toast.makeText(ctx, "SOS sent on ${s.joinToString()}", Toast.LENGTH_LONG).show() } } else confirmSos = true },
+            Button(onClick = { if (confirmSos) { confirmSos = false; scope.launch { val s = app.radios.broadcastStatus(true); ctx.toast("SOS sent on ${s.joinToString()}", long = true) } } else confirmSos = true },
                 Modifier.fillMaxWidth().height(64.dp), enabled = radios.isNotEmpty(), colors = ButtonDefaults.buttonColors(containerColor = StPaulMeshPalette.Danger)) {
                 Text(if (confirmSos) "Tap again to send SOS" else "SOS — I need help", fontSize = 18.sp)
             }
@@ -176,7 +177,7 @@ fun TopologyScreen() {
             }
             for (n in graph.nodes) {
                 val p = pos[n.key] ?: continue
-                val col = when (n.protocol) { "MESHTASTIC" -> StPaulMeshPalette.Meshtastic; "MESHCORE" -> StPaulMeshPalette.MeshCore; else -> StPaulMeshPalette.Reticulum }
+                val col = protocolColorOf(n.protocol)
                 drawCircle(if (n.hops == 0) StPaulMeshPalette.Gold else col, if (n.hops == 0) 14f else 10f, p)
                 drawText(measurer, n.label, p + Offset(12f, -8f), TextStyle(fontSize = 10.sp, color = ink))
             }
@@ -429,7 +430,7 @@ fun AtakScreen() {
                 scope.launch {
                     var n = 0
                     nodes.filter { it.lat != null }.forEach { e -> AtakCotBridge.buildCotXml(e.toMeshNode())?.let { if (AtakCotBridge.sendUdp(it).isSuccess) n++ } }
-                    Toast.makeText(ctx, "Sent $n positions", Toast.LENGTH_SHORT).show()
+                    ctx.toast("Sent $n positions")
                 }
             }) { Text("Send all positions now") }
         }

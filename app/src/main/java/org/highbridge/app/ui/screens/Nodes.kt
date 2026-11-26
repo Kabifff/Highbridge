@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.toast
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -135,7 +135,7 @@ fun NodeDetailScreen(key: String) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { nav.navigate("chat/${Uri.encode("${n.protocol}:dm:${n.id}")}") }) { Text("Message") }
-                OutlinedButton(onClick = { scope.launch { val r = app.radios.radio(proto)?.requestTraceroute(n.id); Toast.makeText(ctx, r?.exceptionOrNull()?.message ?: "Traceroute sent", Toast.LENGTH_SHORT).show() } }) { Text("Traceroute") }
+                OutlinedButton(onClick = { scope.launch { val r = app.radios.radio(proto)?.requestTraceroute(n.id); ctx.toast(r?.exceptionOrNull()?.message ?: "Traceroute sent") } }) { Text("Traceroute") }
                 if (n.lat != null) OutlinedButton(onClick = { nav.navigate("compass/${Uri.encode(key)}") }) { Text("Compass") }
             }
             if (proto == ProtocolType.MESHCORE) OutlinedButton(onClick = { nav.navigate("repeater/${Uri.encode(n.id)}") }) { Text("Repeater admin & path") }

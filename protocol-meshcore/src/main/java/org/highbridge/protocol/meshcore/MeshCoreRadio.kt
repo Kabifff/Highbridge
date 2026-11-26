@@ -88,7 +88,7 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
     @Volatile private var pendingReply: CompletableDeferred<ByteArray>? = null
     private var contactBuffer = mutableMapOf<String, MC.Contact>()
     private val channelInfo = sortedMapOf<Int, MC.ChannelInfo>()
-    private val ackToPacket = mutableMapOf<Int, String>()
+    private val ackToPacket = LinkedHashMap<Int, String>()
     private val syncLock = Mutex()
     private var presetForAirtime: LoRaAirtime.Params? = null
 
@@ -112,7 +112,7 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
         Unit
     }.onFailure { _state.value = ConnectionState.Error(it.message ?: "Connection failed"); link.close() }
 
-    override suspend fun disconnect() { link.close(); scope.cancel(); _state.value = ConnectionState.Disconnected }
+    override suspend fun disconnect() { scope.cancel(); link.close(); _state.value = ConnectionState.Disconnected }
 
     /** Sends one command and waits for its direct reply (codes below 0x80). Pushes are handled separately. */
     suspend fun command(frame: ByteArray, timeoutMs: Long = 8_000): ByteArray = cmdLock.withLock {
@@ -152,7 +152,7 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
             MC.PUSH_MSG_WAITING -> scope.launch { syncMessages() }
             MC.PUSH_SEND_CONFIRMED -> if (f.size >= 5) {
                 val ack = ByteBuffer.wrap(f, 1, 4).order(ByteOrder.LITTLE_ENDIAN).int
-                ackToPacket.remove(ack)?.let { _events.emit(RadioEvent.Ack(protocol, it, true)) }
+                synchronized(ackToPacket) { ackToPacket.remove(ack) }?.let { _events.emit(RadioEvent.Ack(protocol, it, true)) }
             }
             MC.PUSH_ADVERT, MC.PUSH_PATH_UPDATED -> scope.launch { runCatching { refreshContacts() } }
             MC.PUSH_LOGIN_SUCCESS, MC.PUSH_LOGIN_FAIL -> if (f.size >= 8) {
@@ -235,15 +235,18 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
         if (toNodeId == null) {
             val r = command(MC.sendChannelText(channelIndex, text))
             check(r[0].toInt() == MC.RESP_OK) { "Radio refused the channel message" }
-            airtime(text.length + 16)
+            airtime(text.toByteArray().size + 16)
             "mc-out-${System.nanoTime()}"
         } else {
             val r = command(MC.sendText(prefixOf(toNodeId), text))
             check(r[0].toInt() == MC.RESP_SENT) { if (r[0].toInt() == MC.RESP_ERR) "Contact not found" else "Send failed" }
             val ack = ByteBuffer.wrap(r, 2, 4).order(ByteOrder.LITTLE_ENDIAN).int
             val id = "mc-out-${System.nanoTime()}"
-            ackToPacket[ack] = id
-            airtime(text.length + 16)
+            synchronized(ackToPacket) {
+                ackToPacket[ack] = id
+                while (ackToPacket.size > 200) ackToPacket.remove(ackToPacket.keys.first())
+            }
+            airtime(text.toByteArray().size + 16)
             id
         }
     }

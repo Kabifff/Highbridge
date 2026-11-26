@@ -95,8 +95,8 @@ fun everything() = runBlocking {
     var t = 0L; val am = AirtimeMonitor(MeshtasticRegion.EU_868) { t }
     am.recordTx(300_000); check("EU 868: 5 min/hr = 8.3%, warns at 80% of 10%", am.shouldWarn() && !am.mustHold())
     check("US has no duty limit", !AirtimeMonitor(MeshtasticRegion.US) { 0 }.apply { recordTx(3_000_000) }.mustHold())
-    check("MeshCore reset path = 13 + 32-byte key", MeshCoreCommands.resetPath(ByteArray(32)).let { it[0] == 13.toByte() && it.size == 33 })
-    val cli = MeshCoreCommands.cliCommand(ByteArray(32) { 7 }, "neighbors")
+    check("MeshCore reset path = 13 + 32-byte key", org.highbridge.protocol.meshcore.MC.resetPath(ByteArray(32)).let { it[0] == 13.toByte() && it.size == 33 })
+    val cli = org.highbridge.protocol.meshcore.MC.remoteCli(ByteArray(6) { 7 }, "neighbors")
     check("MeshCore CLI frame: type 2, txt_type 1, len 13+text", cli[0] == 2.toByte() && cli[1] == 1.toByte() && cli.size == 13 + 9)
     // Security
     val blob = EncryptedBackupManager.encrypt("keys".toByteArray(), "correct horse".toCharArray())

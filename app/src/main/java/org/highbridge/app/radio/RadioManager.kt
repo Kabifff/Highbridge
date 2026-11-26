@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import org.highbridge.app.MainActivity
 import org.highbridge.app.R
 import org.highbridge.app.data.ChannelEntity
@@ -80,8 +81,10 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _radios = MutableStateFlow<Map<ProtocolType, MeshRadio>>(emptyMap())
     val radios: StateFlow<Map<ProtocolType, MeshRadio>> = _radios
-    private val jobs = mutableMapOf<ProtocolType, List<Job>>()
-    private val usbLinks = mutableMapOf<ProtocolType, UsbSerialLink>()
+    private val jobs = java.util.concurrent.ConcurrentHashMap<ProtocolType, List<Job>>()
+    private val usbLinks = java.util.concurrent.ConcurrentHashMap<ProtocolType, UsbSerialLink>()
+    private val reconnectLock = kotlinx.coroutines.sync.Mutex()
+    private val reconnectJobs = java.util.concurrent.ConcurrentHashMap<ProtocolType, Job>()
 
     private val _log = MutableSharedFlow<Pair<ProtocolType, String>>(replay = 200, extraBufferCapacity = 500)
     /** Debug log lines and admin replies from every radio, for the terminal screen. */
@@ -194,7 +197,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
                             _radios.value = _radios.value - radio.protocol; refreshService()
                             if (s is ConnectionState.Error) {
                                 _toast.emit("${radio.protocol.shortTag}: ${s.message}. Trying to reconnect…")
-                                scope.launch { repeat(6) { delay(20_000); if (_radios.value.containsKey(radio.protocol)) return@launch; runCatching { reconnectRemembered() } } }
+                                scheduleReconnect(radio.protocol)
                             }
                         }
                     }
@@ -221,8 +224,20 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         if (_radios.value.isNotEmpty() || BridgePrefs.isEnabled(ctx)) runCatching { MeshBridgeService.start(ctx) }
     }
 
+    /** Up to 6 tries, 20 s apart; one loop per protocol however many times the link drops. */
+    private fun scheduleReconnect(protocol: ProtocolType) {
+        if (reconnectJobs[protocol]?.isActive == true) return
+        reconnectJobs[protocol] = scope.launch {
+            repeat(6) {
+                delay(20_000)
+                if (_radios.value.containsKey(protocol)) return@launch
+                runCatching { reconnectRemembered() }
+            }
+        }
+    }
+
     @SuppressLint("MissingPermission")
-    suspend fun reconnectRemembered() {
+    suspend fun reconnectRemembered() = reconnectLock.withLock {
         val bt = ctx.getSystemService(BluetoothManager::class.java)?.adapter
         val usb = ctx.getSystemService(UsbManager::class.java)
         for (entry in prefs.lastDevices.value) {
@@ -238,10 +253,12 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         }
     }
 
+    private fun conversationKey(protocol: ProtocolType, channel: Int, toNodeId: String?, fromId: String) =
+        if (toNodeId == null) "${protocol.name}:ch:$channel" else "${protocol.name}:dm:$fromId"
+
     // ------------------------------------------------------------------ incoming
 
-    private fun conversationOf(p: MeshPacket): String =
-        if (p.toNodeId == null) "${p.protocol.name}:ch:${p.channelIndex}" else "${p.protocol.name}:dm:${p.fromNodeId}"
+    private fun conversationOf(p: MeshPacket): String = conversationKey(p.protocol, p.channelIndex, p.toNodeId, p.fromNodeId)
 
     private suspend fun onPacket(p: MeshPacket) {
         media.onPacket(p)
@@ -296,7 +313,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
             n.hopsAway.takeIf { it >= 0 } ?: old?.hops, maxOf(n.lastHeardMs, old?.lastHeardMs ?: 0), old?.favorite ?: false))
     }
 
-    private val fenceState = mutableMapOf<String, Boolean>()
+    private val fenceState = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     private suspend fun checkGeofences(nodeKey: String, name: String, lat: Double, lon: Double) {
         for (g in dao.activeGeofences()) {
             if (g.nodeKey != null && g.nodeKey != nodeKey) continue
@@ -320,7 +337,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
             }
             MediaType.BINARY_FILE -> File(dir, "file_${System.currentTimeMillis()}.bin").also { it.writeBytes(m.data) } to "File"
         }
-        val conv = if (m.toNodeId == null) "${m.protocol.name}:ch:${m.channelIndex}" else "${m.protocol.name}:dm:${m.senderId}"
+        val conv = conversationKey(m.protocol, m.channelIndex, m.toNodeId, m.senderId)
         dao.insertMessage(MessageEntity(packetId = "media-${file.name}", protocol = m.protocol.name, conversation = conv, fromId = m.senderId,
             fromName = m.senderName, text = label, timeMs = System.currentTimeMillis(), outgoing = false, mediaType = m.mediaType.name, mediaPath = file.absolutePath))
         notifyMessage(conv, m.senderName, label)
@@ -339,7 +356,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     suspend fun sendText(conversation: String, text: String): Result<String> {
         val t = parse(conversation)
         val radio = radio(t.protocol) ?: return Result.failure(IllegalStateException("Connect a ${t.protocol.shortTag} radio first"))
-        if (airtime.mustHold()) return Result.failure(IllegalStateException("You've used this hour's airtime allowance for ${prefs.region.value.label}. Wait a few minutes."))
+        airtimeHold()?.let { return Result.failure(it) }
         val row = dao.insertMessage(MessageEntity(packetId = "pending-${System.nanoTime()}", protocol = t.protocol.name, conversation = conversation,
             fromId = radio.myNodeId.value ?: "me", fromName = "You", text = text, timeMs = System.currentTimeMillis(), outgoing = true, status = 0))
         val r = radio.sendText(t.channel, text, t.toNodeId)
@@ -347,7 +364,11 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         return r
     }
 
+    private fun airtimeHold(): Throwable? = if (airtime.mustHold())
+        IllegalStateException("You've used this hour's airtime allowance for ${prefs.region.value.label}. Wait a few minutes.") else null
+
     suspend fun sendPhoto(conversation: String, bitmap: android.graphics.Bitmap): Result<Int> = runCatching {
+        airtimeHold()?.let { throw it }
         val t = parse(conversation)
         val bytes = LoRaImageCompressor.compressForLoRa(bitmap)
         val id = media.send(t.protocol, t.channel, t.toNodeId, MediaType.IMAGE_WEBP, bytes)
@@ -358,6 +379,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     }
 
     suspend fun sendVoice(conversation: String, pcm: ShortArray, mode: Int = NativeCodec2.MODE_1200): Result<Int> = runCatching {
+        airtimeHold()?.let { throw it }
         val t = parse(conversation)
         val bits = NativeCodec2(mode).use { it.encodePcm8k(pcm) }
         val id = media.send(t.protocol, t.channel, t.toNodeId, MediaType.VOICE_CODEC2, VoiceIO.pack(mode, bits))
@@ -375,10 +397,13 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         val text = if (sos) "SOS! Need help at $where" else "Check-in: OK at $where"
         val sent = mutableListOf<String>()
         for ((p, r) in _radios.value) {
-            if (r.sendText(0, text, null).isSuccess) sent += p.shortTag
-            if (loc != null) r.sendPosition(loc.first, loc.second)
+            // SOS goes out even past the airtime allowance; check-ins respect it.
+            if (!sos && airtime.mustHold()) continue
+            val ok = r.sendText(0, text, null).isSuccess
+            if (ok) sent += p.shortTag
+            if (loc != null) runCatching { r.sendPosition(loc.first, loc.second) }
             dao.insertMessage(MessageEntity(packetId = "status-${System.nanoTime()}", protocol = p.name, conversation = "${p.name}:ch:0", fromId = "me",
-                fromName = "You", text = text, timeMs = System.currentTimeMillis(), outgoing = true, status = 1))
+                fromName = "You", text = text, timeMs = System.currentTimeMillis(), outgoing = true, status = if (ok) 1 else 3))
         }
         return sent
     }
@@ -396,12 +421,30 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
 
     // ------------------------------------------------------------------ location, tracks
 
+    private var lastSharedAt = 0L
+    private var lastShared: Pair<Double, Double>? = null
+
     fun onLocation(lat: Double, lon: Double, alt: Double?) {
         myLocation.value = lat to lon
         scope.launch {
             recordingTrackId?.let { dao.insertTrackPoint(TrackPointEntity(trackId = it, lat = lat, lon = lon, altM = alt, timeMs = System.currentTimeMillis())) }
-            if (prefs.shareLocation.value) for (r in _radios.value.values) runCatching { r.sendPosition(lat, lon, alt?.toInt()) }
+            if (prefs.shareLocation.value && shouldShare(lat, lon)) for (r in _radios.value.values) runCatching { r.sendPosition(lat, lon, alt?.toInt()) }
         }
+    }
+
+    /**
+     * GPS fixes arrive every 35 s, far too often to put on the air. Share at most every 15 minutes,
+     * or every 2 minutes once you've moved 200 m, and never past the airtime allowance.
+     */
+    @Synchronized
+    private fun shouldShare(lat: Double, lon: Double): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val since = now - lastSharedAt
+        val moved = lastShared?.let { Geo.distanceM(it.first, it.second, lat, lon) } ?: Double.MAX_VALUE
+        val due = lastSharedAt == 0L || since >= POSITION_EVERY_MS || (since >= POSITION_MIN_MS && moved >= POSITION_MOVE_M)
+        if (!due || airtime.shouldWarn()) return false
+        lastSharedAt = now; lastShared = lat to lon
+        return true
     }
 
     fun startTrack(): Long { val id = System.currentTimeMillis(); recordingTrackId = id; return id }
@@ -415,7 +458,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         if (!on) return
         rangeJob = scope.launch {
             var seq = 1
-            while (isActive) { meshtastic?.sendRangeTest(seq++); delay(intervalSec * 1000L) }
+            while (isActive) { if (!airtime.mustHold()) meshtastic?.sendRangeTest(seq++); delay(intervalSec * 1000L) }
         }
     }
 
@@ -430,7 +473,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     }
 
     private fun notifyMessage(conv: String, from: String, text: String) {
-        val sos = text.startsWith("SOS")
+        val sos = SOS.containsMatchIn(text)
         notify(if (sos) "SOS from $from" else from, text, conv.hashCode(), if (sos) CH_ALERTS else CH_MESSAGES, conv)
     }
 
@@ -449,6 +492,11 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     companion object {
         const val CH_MESSAGES = "messages"
         const val CH_ALERTS = "alerts"
+        private const val POSITION_EVERY_MS = 15 * 60_000L
+        private const val POSITION_MIN_MS = 2 * 60_000L
+        private const val POSITION_MOVE_M = 200.0
+        /** "SOS!" at the start, or after a bridge tag like "[MT:bob] ". */
+        private val SOS = Regex("""^(\[(MT|MC|RNS):[^\]]*]\s*)*SOS\b""")
     }
 }
 

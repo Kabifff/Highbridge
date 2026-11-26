@@ -2,12 +2,12 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app
 
+import org.highbridge.app.ui.toast
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -131,7 +131,7 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
             if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
         }
         perms.launch(list.toTypedArray())
-        app.radios.toasts.collect { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show() }
+        app.radios.toasts.collect { ctx.toast(it, long = true) }
     }
     LaunchedEffect(pendingRoute) { pendingRoute?.let { nav.navigate(it); consumed() } }
     LaunchedEffect(onboarded) { if (onboarded) runCatching { app.radios.reconnectRemembered() } }

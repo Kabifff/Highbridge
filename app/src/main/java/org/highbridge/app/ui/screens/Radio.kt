@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.toast
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -9,7 +10,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -78,7 +78,6 @@ import org.highbridge.feature.bridge.BridgePrefs
 import org.highbridge.feature.bridge.MeshBridgeService
 import java.util.Locale
 
-private fun toast(ctx: Context, s: String?) = Toast.makeText(ctx, s ?: "Done", Toast.LENGTH_LONG).show()
 
 /** Region picker for every LoRa band, plus radio settings for each connected protocol. */
 @Composable
@@ -122,8 +121,8 @@ fun RadioScreen() {
                         OutlinedButton(onClick = {
                             app.prefs.setRegion(MeshtasticRegion.US); preset = MeshtasticModemPreset.MEDIUM_FAST; mcPreset = StPaulQuickJoin.meshCore
                             scope.launch {
-                                app.radios.meshtastic?.applyLoRa(StPaulQuickJoin.meshtastic)?.let { r -> toast(ctx, r.exceptionOrNull()?.message ?: "Meshtastic set to US · Medium Fast") }
-                                app.radios.meshcore?.applyPreset(StPaulQuickJoin.meshCore, 22)?.let { r -> toast(ctx, r.exceptionOrNull()?.message ?: "MeshCore set to USA / Canada") }
+                                app.radios.meshtastic?.applyLoRa(StPaulQuickJoin.meshtastic)?.let { r -> ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "Meshtastic set to US · Medium Fast") }
+                                app.radios.meshcore?.applyPreset(StPaulQuickJoin.meshCore, 22)?.let { r -> ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "MeshCore set to USA / Canada") }
                             }
                         }) { Text("Join Saint Paul Mesh") }
                     }
@@ -166,7 +165,7 @@ fun RadioScreen() {
                     Slider(power.toFloat(), { power = it.toInt() }, valueRange = 0f..region.powerLimitDbm.toFloat().coerceAtLeast(1f))
                     Text("Capped at your region's legal limit. Lower power saves battery.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(enabled = radios.containsKey(ProtocolType.MESHTASTIC) && region != MeshtasticRegion.UNSET, onClick = {
-                        scope.launch { app.radios.meshtastic?.applyLoRa(MeshtasticLoRaConfig(region, preset, 3, power))?.let { toast(ctx, it.exceptionOrNull()?.message ?: "Sent to the radio. It will restart.") } }
+                        scope.launch { app.radios.meshtastic?.applyLoRa(MeshtasticLoRaConfig(region, preset, 3, power))?.let { ctx.toast(long = true, message = it.exceptionOrNull()?.message ?: "Sent to the radio. It will restart.") } }
                     }) { Text("Apply to Meshtastic radio") }
                 }
                 HbCard {
@@ -180,7 +179,7 @@ fun RadioScreen() {
                     else problems.forEach { Text(it, color = StPaulMeshPalette.Danger) }
                     Text("Transmit power: $mcPower dBm"); Slider(mcPower.toFloat(), { mcPower = it.toInt() }, valueRange = 1f..minOf(22, mcPreset.band.powerLimitDbm).toFloat())
                     Button(enabled = radios.containsKey(ProtocolType.MESHCORE) && problems.isEmpty(), onClick = {
-                        scope.launch { app.radios.meshcore?.applyPreset(mcPreset, mcPower)?.let { toast(ctx, it.exceptionOrNull()?.message ?: "MeshCore radio updated") } }
+                        scope.launch { app.radios.meshcore?.applyPreset(mcPreset, mcPower)?.let { ctx.toast(long = true, message = it.exceptionOrNull()?.message ?: "MeshCore radio updated") } }
                     }) { Text("Apply to MeshCore radio") }
                 }
                 HbCard {
@@ -307,7 +306,7 @@ fun ConnectScreen() {
                                 scanner.stop()
                                 val r = app.radios.connectBle(f.device, p)
                                 busy = null
-                                toast(ctx, r.exceptionOrNull()?.message ?: "Connected")
+                                ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "Connected")
                                 if (r.isSuccess) nav.popBackStack()
                             }
                         })
@@ -327,10 +326,10 @@ fun ConnectScreen() {
                 busy = d.device.deviceName
                 scope.launch {
                     val ok = requestUsbPermission(ctx, d.device)
-                    if (!ok) { busy = null; toast(ctx, "USB permission denied"); return@launch }
+                    if (!ok) { busy = null; ctx.toast(long = true, message = "USB permission denied"); return@launch }
                     val r = app.radios.connectUsb(d)
                     busy = null
-                    toast(ctx, r.exceptionOrNull()?.message ?: "Connected over USB as ${r.getOrNull()?.name?.lowercase()}")
+                    ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "Connected over USB as ${r.getOrNull()?.name?.lowercase()}")
                     if (r.isSuccess) nav.popBackStack()
                 }
             }.padding(horizontal = 20.dp, vertical = 10.dp)) {
@@ -348,7 +347,7 @@ fun ConnectScreen() {
                 if (!installed) {
                     Text("Reticulum support needs a one-time download (about ${org.highbridge.app.rns.RnsInstaller.DOWNLOAD_KB} KB).", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { askDownload = true }) { Text(if (busy == "dl") "Downloading…" else "Get Reticulum") }
-                } else Button(onClick = { busy = "rns"; scope.launch { val r = app.radios.startReticulumNetworkOnly(); busy = null; toast(ctx, r.exceptionOrNull()?.message ?: "Reticulum started") } }) {
+                } else Button(onClick = { busy = "rns"; scope.launch { val r = app.radios.startReticulumNetworkOnly(); busy = null; ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "Reticulum started") } }) {
                     Text(if (busy == "rns") "Starting…" else "Start Reticulum")
                 }
                 Gap(24)
@@ -366,7 +365,7 @@ fun ConnectScreen() {
                     scope.launch {
                         val r = runCatching { org.highbridge.app.rns.RnsInstaller.install(ctx) }
                         busy = null; installed = org.highbridge.app.rns.RnsInstaller.isInstalled(ctx)
-                        toast(ctx, r.exceptionOrNull()?.message ?: "Reticulum is ready")
+                        ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "Reticulum is ready")
                     }
                 }) { Text("I agree, download") } },
                 dismissButton = { TextButton(onClick = { askDownload = false }) { Text("Not now") } })

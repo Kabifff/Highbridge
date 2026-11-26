@@ -81,5 +81,14 @@ class PowerProfileManager(private val ctx: Context, private val prefs: Prefs) {
         }
     }
 
-    fun start() { ctx.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) }
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    private var started = false
+
+    fun start() {
+        if (started) return
+        started = true
+        ctx.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        // Bluetooth link speed follows the power profile.
+        scope.launch { prefs.powerProfile.collect { org.highbridge.core.protocol.link.GattClient.setPriorityForAll(it.blePriority.gattValue) } }
+    }
 }

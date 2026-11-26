@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.toast
 import android.content.Intent
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -68,10 +68,10 @@ fun ChannelsScreen(importUri: String?) {
     var pendingImport by remember { mutableStateOf<EncryptedChannel?>(null) }
     val error = EncryptedChannel.validate(proto, slot.toIntOrNull() ?: -1, name.trim())
 
-    LaunchedEffect(importUri) { importUri?.let { EncryptedChannel.fromShareUri(it)?.let { c -> pendingImport = c } ?: Toast.makeText(ctx, "That channel link isn't valid", Toast.LENGTH_LONG).show() } }
+    LaunchedEffect(importUri) { importUri?.let { EncryptedChannel.fromShareUri(it)?.let { c -> pendingImport = c } ?: ctx.toast("That channel link isn't valid", long = true) } }
     val scan = rememberLauncherForActivityResult(ScanContract()) { r ->
         val c = r.contents?.let { EncryptedChannel.fromShareUri(it) }
-        if (c == null) { if (r.contents != null) Toast.makeText(ctx, "That QR code isn't a Highbridge channel", Toast.LENGTH_LONG).show() } else pendingImport = c
+        if (c == null) { if (r.contents != null) ctx.toast("That QR code isn't a Highbridge channel", long = true) } else pendingImport = c
     }
 
     LazyColumn(Modifier.fillMaxSize()) {
@@ -91,7 +91,7 @@ fun ChannelsScreen(importUri: String?) {
                     if (error != null && name.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                     Button(enabled = error == null, onClick = {
                         val c = EncryptedChannel.createRandom(proto, slot.toInt(), name)
-                        scope.launch { val r = app.radios.applyChannel(c); Toast.makeText(ctx, r.exceptionOrNull()?.message ?: "Channel loaded on your radio", Toast.LENGTH_LONG).show() }
+                        scope.launch { val r = app.radios.applyChannel(c); ctx.toast(r.exceptionOrNull()?.message ?: "Channel loaded on your radio", long = true) }
                         showing = c; name = ""
                     }) { Text("Create and load") }
                 }
@@ -107,7 +107,7 @@ fun ChannelsScreen(importUri: String?) {
                 ProtocolBadge(ch.protocol)
                 Column(Modifier.weight(1f)) { Text(c.name, fontWeight = FontWeight.Bold); Text("Slot ${c.slot}", fontSize = 12.sp) }
                 TextButton(onClick = { showing = ch }) { Text("Share") }
-                TextButton(onClick = { scope.launch { app.radios.applyChannel(ch).let { Toast.makeText(ctx, it.exceptionOrNull()?.message ?: "Loaded", Toast.LENGTH_SHORT).show() } } }) { Text("Load") }
+                TextButton(onClick = { scope.launch { app.radios.applyChannel(ch).let { ctx.toast(it.exceptionOrNull()?.message ?: "Loaded") } } }) { Text("Load") }
                 TextButton(onClick = { scope.launch { app.db.dao().deleteChannel(c.id) } }) { Text("Delete") }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)
@@ -128,7 +128,7 @@ fun ChannelsScreen(importUri: String?) {
     }
     pendingImport?.let { c ->
         AlertDialog(onDismissRequest = { pendingImport = null },
-            confirmButton = { TextButton(onClick = { pendingImport = null; scope.launch { app.radios.applyChannel(c).let { Toast.makeText(ctx, it.exceptionOrNull()?.message ?: "Joined ${c.name}", Toast.LENGTH_LONG).show() } } }) { Text("Join") } },
+            confirmButton = { TextButton(onClick = { pendingImport = null; scope.launch { app.radios.applyChannel(c).let { ctx.toast(it.exceptionOrNull()?.message ?: "Joined ${c.name}", long = true) } } }) { Text("Join") } },
             dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } },
             title = { Text("Join ${c.name}?") }, text = { Text("${c.protocol.name.lowercase().replaceFirstChar { it.uppercase() }} channel, slot ${c.slotIndex}. This replaces whatever is in that slot on your radio.") })
     }

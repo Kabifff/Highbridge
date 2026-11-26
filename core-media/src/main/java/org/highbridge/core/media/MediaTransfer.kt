@@ -36,16 +36,22 @@ class MediaTransferManager(
     val completed = _completed.asSharedFlow()
     private val _progress = MutableSharedFlow<Progress>(extraBufferCapacity = 64)
     val progress = _progress.asSharedFlow()
-    private val origin = HashMap<String, MeshPacket>()
+    private val origin = java.util.concurrent.ConcurrentHashMap<String, MeshPacket>()
+    private val nacks = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     init {
         scope.launch {
             while (isActive) {
                 delay(15_000)
                 for ((sender, id) in reassembler.stalledTransfers(20_000)) {
+                    val key = "$sender#$id"
+                    val tries = nacks.merge(key, 1, Int::plus) ?: 1
+                    if (tries > MAX_NACKS) { // the sender has gone; stop asking
+                        reassembler.drop(sender, id); origin.remove(key); nacks.remove(key); continue
+                    }
                     val info = reassembler.transferInfo(sender, id) ?: continue
                     val missing = reassembler.missingChunks(sender, id)
-                    val pkt = origin["$sender#$id"] ?: continue
+                    val pkt = origin[key] ?: continue
                     val t = transports()[pkt.protocol] ?: continue
                     reassembler.touch(sender, id)
                     runCatching { t.sendBinary(pkt.channelIndex, MediaFrame.PRIVATE_PORT_ID, MediaFrame.nack(info.first, id, info.second, missing), pkt.fromNodeId.takeIf { !it.startsWith("name:") && !it.startsWith("channel-") }) }
@@ -55,6 +61,8 @@ class MediaTransferManager(
             }
         }
     }
+
+    companion object { const val MAX_NACKS = 5 }
 
     fun chunkPayloadFor(p: ProtocolType): Int = when (p) {
         ProtocolType.MESHTASTIC -> 140
@@ -70,6 +78,7 @@ class MediaTransferManager(
         synchronized(sent) { sent[id] = Sent(protocol, channelIndex, toNodeId, chunks, System.currentTimeMillis()) }
         scope.launch {
             chunks.forEachIndexed { i, c ->
+                if (transports()[protocol] !== transport) return@launch // radio went away; a NACK can finish it later
                 transport.sendBinary(channelIndex, MediaFrame.PRIVATE_PORT_ID, c, toNodeId)
                 _progress.emit(Progress(id, i + 1, chunks.size, true))
                 if (i < chunks.lastIndex) delay(chunkIntervalMs())
@@ -88,7 +97,7 @@ class MediaTransferManager(
                 _progress.tryEmit(Progress(ev.transferId, ev.receivedChunks, ev.totalChunks, false))
             }
             is ReassemblyEvent.Completed -> {
-                origin.remove("${ev.senderId}#${ev.transferId}")
+                origin.remove("${ev.senderId}#${ev.transferId}"); nacks.remove("${ev.senderId}#${ev.transferId}")
                 _completed.tryEmit(Incoming(p.protocol, p.fromNodeId, p.fromShortName, p.channelIndex, p.toNodeId, ev.mediaType, ev.data))
             }
             is ReassemblyEvent.NackReceived -> resend(ev.transferId, ev.missingChunks)

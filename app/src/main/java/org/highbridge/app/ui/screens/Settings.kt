@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.toast
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +25,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -94,8 +95,8 @@ fun SettingsScreen() {
         scope.launch {
             runCatching {
                 val blob = withContext(Dispatchers.IO) { EncryptedBackupManager.encrypt(Backup.export(app).toByteArray(), pw) }
-                ctx.contentResolver.openOutputStream(uri)!!.use { it.write(blob) }
-            }.let { Toast.makeText(ctx, it.exceptionOrNull()?.message ?: "Backup saved (encrypted with your password)", Toast.LENGTH_LONG).show() }
+                withContext(Dispatchers.IO) { ctx.contentResolver.openOutputStream(uri)?.use { it.write(blob) } ?: error("Couldn't open that file") }
+            }.let { ctx.toast(it.exceptionOrNull()?.message ?: "Backup saved (encrypted with your password)", long = true) }
         }
     }
     val importDoc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -103,10 +104,10 @@ fun SettingsScreen() {
         val pw = backupPw.toCharArray()
         scope.launch {
             runCatching {
-                val blob = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                val blob = withContext(Dispatchers.IO) { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } } ?: error("Couldn't open that file")
                 val json = withContext(Dispatchers.IO) { String(EncryptedBackupManager.decrypt(blob, pw)) }
                 Backup.import(app, json)
-            }.let { Toast.makeText(ctx, it.exceptionOrNull()?.let { "Couldn't restore: wrong password or damaged file" } ?: "Restored", Toast.LENGTH_LONG).show() }
+            }.let { ctx.toast(it.exceptionOrNull()?.let { "Couldn't restore: wrong password or damaged file" } ?: "Restored", long = true) }
         }
     }
 
@@ -120,7 +121,7 @@ fun SettingsScreen() {
                     p.setDisplayName(nameDraft)
                     scope.launch {
                         app.radios.radios.value.values.forEach { it.setOwnerName(nameDraft, nameDraft.filter { c -> c.isLetterOrDigit() }.take(4).ifBlank { "HB" }) }
-                        Toast.makeText(ctx, "Saved and sent to your radios", Toast.LENGTH_SHORT).show()
+                        ctx.toast("Saved and sent to your radios")
                     }
                 }) { Text("Save") }
             }
@@ -167,7 +168,7 @@ fun SettingsScreen() {
                             p.setPin("${rec.saltB64}|${rec.hashB64}|${rec.iterations}")
                             if (duressPin.length >= 4) withContext(Dispatchers.Default) { AppSecurityManager.create(duressPin) }.let { d -> p.setDuress("${d.saltB64}|${d.hashB64}|${d.iterations}") } else p.setDuress(null)
                             newPin = ""; duressPin = ""
-                            Toast.makeText(ctx, "PIN lock on", Toast.LENGTH_SHORT).show()
+                            ctx.toast("PIN lock on")
                         }
                     }) { Text("Turn on") }
                     if (pin != null) OutlinedButton(onClick = { p.setPin(null); p.setDuress(null) }) { Text("Turn off") }
@@ -236,8 +237,10 @@ fun LockScreen(onUnlocked: () -> Unit) {
     var msg by remember { mutableStateOf<String?>(null) }
     val manager = remember {
         fun rec(s: String?) = s?.split('|')?.takeIf { it.size == 3 }?.let { AppSecurityManager.PinRecord(it[0], it[1], it[2].toInt()) }
-        AppSecurityManager(rec(app.prefs.pinRecord.value)!!, rec(app.prefs.duressRecord.value))
+        rec(app.prefs.pinRecord.value)?.let { AppSecurityManager(it, rec(app.prefs.duressRecord.value)) }
     }
+    // A damaged PIN record must not lock the owner out of their own app.
+    if (manager == null) { LaunchedEffect(Unit) { onUnlocked() }; return }
     Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)) {
         HeroLock()
         Text("Highbridge", style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)

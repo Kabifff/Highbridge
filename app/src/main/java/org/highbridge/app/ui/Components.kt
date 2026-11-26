@@ -165,3 +165,7 @@ fun timeAgo(ms: Long, now: Long = System.currentTimeMillis()): String {
 
 @Composable fun Gap(h: Int) = Spacer(Modifier.height(h.dp))
 @Composable fun HGap(w: Int) = Spacer(Modifier.width(w.dp))
+
+/** One place for short messages to the user. */
+fun android.content.Context.toast(message: String?, long: Boolean = false) =
+    android.widget.Toast.makeText(this, message ?: "Done", if (long) android.widget.Toast.LENGTH_LONG else android.widget.Toast.LENGTH_SHORT).show()

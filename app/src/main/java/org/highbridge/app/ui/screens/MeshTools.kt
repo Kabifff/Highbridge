@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
-import android.widget.Toast
+import org.highbridge.app.ui.toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -122,7 +122,6 @@ fun RepeaterAdminScreen(id: String) {
     val replies = remember { mutableStateListOf<String>() }
     val path = remember(c) { mutableStateListOf<String>().apply { c?.directPath?.forEach { add("%02x".format(it)) } } }
     LaunchedEffect(Unit) { app.radios.adminReplies.collect { if (it.fromId.startsWith(id.take(8)) || it.fromId == id) replies.add(0, it.text) } }
-    fun toast(s: String?) = Toast.makeText(ctx, s ?: "Sent", Toast.LENGTH_SHORT).show()
 
     if (mc == null || c == null) { Column { HbHeader("Repeater admin", onBack = { nav.popBackStack() }); Text("Connect the MeshCore radio that knows this contact.", Modifier.padding(20.dp)) }; return }
     LazyColumn(Modifier.fillMaxSize()) {
@@ -134,8 +133,8 @@ fun RepeaterAdminScreen(id: String) {
                     OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Admin or guest password") }, singleLine = true,
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { scope.launch { toast(mc.login(id, password).exceptionOrNull()?.message ?: "Login sent; the reply shows below") } }) { Text("Log in") }
-                        OutlinedButton(onClick = { scope.launch { toast(mc.requestStatus(id).exceptionOrNull()?.message) } }) { Text("Get status") }
+                        Button(onClick = { scope.launch { ctx.toast(mc.login(id, password).exceptionOrNull()?.message ?: "Login sent; the reply shows below") } }) { Text("Log in") }
+                        OutlinedButton(onClick = { scope.launch { ctx.toast(mc.requestStatus(id).exceptionOrNull()?.message ?: "Sent") } }) { Text("Get status") }
                     }
                     Text("The password goes in MeshCore's encrypted login request, not as a chat message.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -143,7 +142,7 @@ fun RepeaterAdminScreen(id: String) {
                     Text("Remote command", fontWeight = FontWeight.Bold)
                     OutlinedTextField(cmd, { cmd = it }, Modifier.fillMaxWidth(), label = { Text("e.g. ver, get name, set tx 20, advert, reboot") }, singleLine = true,
                         textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace))
-                    Button(enabled = cmd.isNotBlank(), onClick = { val k = cmd; cmd = ""; replies.add(0, "> $k"); scope.launch { mc.remoteCli(id, k).onFailure { toast(it.message) } } }) { Text("Send command") }
+                    Button(enabled = cmd.isNotBlank(), onClick = { val k = cmd; cmd = ""; replies.add(0, "> $k"); scope.launch { mc.remoteCli(id, k).onFailure { ctx.toast(it.message ?: "Sent") } } }) { Text("Send command") }
                     replies.take(20).forEach { Text(it, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
                 }
                 HbCard {
@@ -157,8 +156,8 @@ fun RepeaterAdminScreen(id: String) {
                         items(contacts.values.filter { it.isRepeater && it.prefixHex != id }) { r -> AssistChip({ if (path.size < MC.MAX_PATH_SIZE) path.add("%02x".format(r.publicKey[0])) }, { Text("+ ${r.name.take(14)}") }) }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { scope.launch { toast(mc.setPath(id, path.map { it.toInt(16).toByte() }.toByteArray()).exceptionOrNull()?.message ?: "Path saved") } }) { Text("Save path") }
-                        OutlinedButton(onClick = { scope.launch { toast(mc.resetPath(id).exceptionOrNull()?.message ?: "Path reset; the next message will flood") } }) { Text("Reset path") }
+                        Button(onClick = { scope.launch { ctx.toast(mc.setPath(id, path.map { it.toInt(16).toByte() }.toByteArray()).exceptionOrNull()?.message ?: "Path saved") } }) { Text("Save path") }
+                        OutlinedButton(onClick = { scope.launch { ctx.toast(mc.resetPath(id).exceptionOrNull()?.message ?: "Path reset; the next message will flood") } }) { Text("Reset path") }
                     }
                 }
             }

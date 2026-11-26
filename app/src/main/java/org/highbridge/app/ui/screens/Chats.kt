@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.toast
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -205,7 +206,7 @@ fun ChatScreen(conversation: String) {
         scope.launch {
             val bmp = if (Build.VERSION.SDK_INT >= 28) ImageDecoder.decodeBitmap(ImageDecoder.createSource(ctx.contentResolver, uri)) { d, _, _ -> d.isMutableRequired = true }
                 else ctx.contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it) }
-            app.radios.sendPhoto(conversation, bmp).onFailure { android.widget.Toast.makeText(ctx, it.message, android.widget.Toast.LENGTH_LONG).show() }
+            app.radios.sendPhoto(conversation, bmp).onFailure { ctx.toast(it.message, long = true) }
         }
     }
     val micPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -241,13 +242,13 @@ fun ChatScreen(conversation: String) {
                     scope.launch {
                         val pcm = VoiceIO.record({ !recording }) { level = it }
                         recording = false
-                        if (pcm.size > VoiceIO.SAMPLE_RATE / 2) app.radios.sendVoice(conversation, pcm).onFailure { android.widget.Toast.makeText(ctx, it.message, android.widget.Toast.LENGTH_LONG).show() }
+                        if (pcm.size > VoiceIO.SAMPLE_RATE / 2) app.radios.sendVoice(conversation, pcm).onFailure { ctx.toast(it.message, long = true) }
                     }
                 }, enabled = radio != null && target.protocol != ProtocolType.RETICULUM) { Icon(if (recording) Icons.Filled.Stop else Icons.Filled.Mic, if (recording) "Stop and send" else "Hold to record voice") }
             } else {
                 IconButton(onClick = {
                     val t = text.trim(); text = ""
-                    scope.launch { app.radios.sendText(conversation, t).onFailure { android.widget.Toast.makeText(ctx, it.message, android.widget.Toast.LENGTH_LONG).show() } }
+                    scope.launch { app.radios.sendText(conversation, t).onFailure { ctx.toast(it.message, long = true) } }
                 }, enabled = radio != null) { Icon(Icons.AutoMirrored.Filled.Send, "Send") }
             }
         }

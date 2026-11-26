@@ -163,6 +163,10 @@ class MediaReassembler(
     fun transferInfo(senderId: String, transferId: Int): Pair<MediaType, Int>? =
         transfers[key(senderId, transferId)]?.let { it.mediaType to it.totalChunks }
 
+    /** Forgets an unfinished transfer (the sender went away). */
+    @Synchronized
+    fun drop(senderId: String, transferId: Int) { transfers.remove(key(senderId, transferId)) }
+
     /** Marks a transfer as just-touched so a NACK isn't sent again immediately. */
     @Synchronized
     fun touch(senderId: String, transferId: Int) { transfers[key(senderId, transferId)]?.lastUpdatedMs = clock() }

@@ -93,6 +93,13 @@ fun StPaulMeshTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Compos
     MaterialTheme(colorScheme = if (darkTheme) Dark else Light, typography = HbTypography, content = content)
 }
 
+/** Light-theme protocol color by stored protocol name ("MESHTASTIC", …); for maps and canvases. */
+fun protocolColorOf(name: String): Color = when (name) {
+    "MESHTASTIC" -> StPaulMeshPalette.Meshtastic
+    "MESHCORE" -> StPaulMeshPalette.MeshCore
+    else -> StPaulMeshPalette.Reticulum
+}
+
 /** Colour for each protocol, light or dark. */
 @Composable
 fun protocolColor(p: org.highbridge.core.protocol.ProtocolType): Color {
