@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Kabifff and the Highbridge contributors
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -14,8 +16,8 @@ android {
         applicationId = "org.highbridge.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
@@ -40,10 +42,9 @@ chaquopy {
         version = "3.12"
         buildPython("/usr/bin/python3.12")
         pip {
+            // Only BSD-licensed pyserial is bundled. RNS and LXMF (Reticulum License, which adds use
+            // restrictions the GPL doesn't allow) are downloaded by the user on first use: see RnsInstaller.
             // RNS falls back to its built-in pure-Python crypto when the "cryptography" package is absent.
-            options("--no-deps")
-            install("rns==1.6.1")
-            install("lxmf==1.3.1")
             install("pyserial==3.5")
         }
     }
@@ -78,7 +79,6 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     implementation("org.osmdroid:osmdroid-android:6.1.20")
-    implementation("org.osmdroid:osmdroid-mapsforge:6.1.20") { isTransitive = false }
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.zxing:core:3.5.3")
     implementation("no.nordicsemi.android:dfu:2.5.0")

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.pro
 
 import java.nio.ByteBuffer

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.radio
 
 import android.annotation.SuppressLint
@@ -122,11 +124,11 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     @SuppressLint("MissingPermission")
     suspend fun connectBle(device: BluetoothDevice, protocol: ProtocolType): Result<Unit> {
         disconnect(protocol)
-        val radio: MeshRadio = when (protocol) {
+        val radio: MeshRadio = runCatching { when (protocol) {
             ProtocolType.MESHTASTIC -> MeshtasticRadio(MeshtasticBleLink(ctx, device))
             ProtocolType.MESHCORE -> MeshCoreRadio(MeshCoreLink(BleNusStream(ctx, device), isSerial = false))
             ProtocolType.RETICULUM -> reticulumRadio(BleNusStream(ctx, device))
-        }
+        } }.getOrElse { return Result.failure(it) }
         return attach(radio).onSuccess { prefs.rememberDevice("BLE|${protocol.name}|${device.address}") }
     }
 
@@ -148,11 +150,17 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     }
 
     /** Reticulum without a radio: Wi-Fi (AutoInterface) and any TCP hosts from settings. */
-    suspend fun startReticulumNetworkOnly(): Result<Unit> { disconnect(ProtocolType.RETICULUM); return attach(reticulumRadio(null)) }
+    suspend fun startReticulumNetworkOnly(): Result<Unit> {
+        disconnect(ProtocolType.RETICULUM)
+        return attach(runCatching { reticulumRadio(null) }.getOrElse { return Result.failure(it) })
+    }
 
     private var multicastLock: android.net.wifi.WifiManager.MulticastLock? = null
 
     private fun reticulumRadio(rnodeLink: StreamLink?): ReticulumRadio {
+        check(org.highbridge.app.rns.RnsInstaller.isInstalled(ctx)) {
+            "Reticulum needs a one-time download first. Open Connect a radio › Reticulum."
+        }
         if (prefs.rnsAuto.value && multicastLock == null) runCatching {
             // AutoInterface finds peers with IPv6 multicast; Android drops multicast without this lock.
             multicastLock = ctx.applicationContext.getSystemService(android.net.wifi.WifiManager::class.java)

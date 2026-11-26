@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app
 
 import android.Manifest
@@ -199,6 +201,7 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                         composable("usb") { UsbScreen() }
                         composable("updates") { UpdatesScreen() }
                         composable("settings") { SettingsScreen() }
+                        composable("licenses") { LicensesScreen() }
                     }
                 }
             }

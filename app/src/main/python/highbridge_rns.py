@@ -1,16 +1,39 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Kabifff and the Highbridge contributors
 """Reticulum / LXMF engine for Highbridge, run inside the app through Chaquopy.
 
 Kotlin calls the functions at the bottom of this file. Events go back through the Java class
 org.highbridge.app.rns.RnsBridge.
+
+The RNS and LXMF packages are NOT shipped inside Highbridge: their Reticulum License adds use
+restrictions that the GPL doesn't allow in a combined work. The app downloads them from PyPI
+only when the user chooses to turn Reticulum on, and this module imports them from that folder.
 """
 import hashlib
 import os
+import sys
 import time
 import threading
 
-import RNS
-import LXMF
 from java import jclass
+
+RNS = None
+LXMF = None
+
+
+def set_ext_path(path):
+    """Folder holding the RNS and LXMF packages the user downloaded."""
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+
+def _ensure():
+    global RNS, LXMF
+    if RNS is None:
+        import RNS as _rns
+        import LXMF as _lxmf
+        RNS = _rns
+        LXMF = _lxmf
 
 APP_NAME = "highbridge"
 _bridge = None
@@ -147,6 +170,7 @@ def _on_group_packet(index):
 
 def start(configdir, enable_auto, tcp_hosts, use_rnode, rnode_bitrate, display_name):
     global _reticulum, _router, _identity, _lxmf_dest
+    _ensure()
     with _lock:
         if _reticulum is not None:
             _set_rnode(use_rnode, rnode_bitrate)

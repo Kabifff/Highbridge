@@ -11,7 +11,7 @@ It's named for Saint Paul's High Bridge, which joins the West 7th neighborhood t
 - **Three protocols in one app**
   - Meshtastic over Bluetooth LE and USB-C (official protobufs)
   - MeshCore companion radios over Bluetooth LE and USB-C
-  - Reticulum and LXMF, running the real RNS and LXMF Python packages inside the app (Chaquopy)
+  - Reticulum and LXMF, running the official RNS and LXMF Python packages inside the app (Chaquopy). These are a one-time download (see License)
   - Reticulum can use an RNode over USB-C or Bluetooth, Wi-Fi (AutoInterface) or TCP
 - **USB-C auto-detect.** Plug a radio in and Highbridge works out whether it runs Meshtastic, MeshCore or RNode firmware.
 - **Worldwide regions**
@@ -86,20 +86,19 @@ The app targets arm64 phones (almost every Android phone from the last several y
 
 ## License
 
-Highbridge is free software under the **GNU GPL v3.0** (see `LICENSE`), because it includes the Meshtastic protobufs (GPL-3.0).
+Highbridge is free software under the **GNU General Public License v3.0 or later** (see `LICENSE`).
+Copyright (C) 2026 Kabifff and the Highbridge contributors. It comes with ABSOLUTELY NO WARRANTY.
 
-It also uses:
+Everything bundled in the source and the app uses a GPL-3.0-compatible license:
+- Meshtastic protobufs: GPL-3.0
+- Codec2: LGPL-2.1
+- Apache-2.0, MIT and BSD libraries
+- Python: PSF
 
-| Component | License |
-|---|---|
-| Codec2 (`core-media/src/main/cpp/codec2`) | LGPL-2.1 |
-| Reticulum and LXMF (downloaded at build time) | Reticulum License |
-| osmdroid | Apache-2.0 |
-| usb-serial-for-android | MIT |
-| ZXing and zxing-android-embedded | Apache-2.0 |
-| Nordic Android DFU Library | BSD-3-Clause |
-| Jetpack / AndroidX | Apache-2.0 |
+`THIRD_PARTY_NOTICES.md` lists each component with its version and copyright. The full license texts are in `app/src/main/assets/licenses/` and in the app under **Settings › Open-source licenses**.
 
-Map data © OpenStreetMap contributors.
+**Reticulum (RNS) and LXMF are not included.** Their Reticulum License adds use restrictions that the GPL doesn't allow inside a GPL program. The app downloads them from PyPI only when a user turns Reticulum on and agrees to that license. The download is checked against fixed SHA-256 sums.
+
+If you share a Highbridge APK, you must also offer its matching source code, for example by linking to the release tag in this repository.
 
 Highbridge isn't affiliated with the Meshtastic, MeshCore or Reticulum projects.

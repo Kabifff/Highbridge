@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Kabifff and the Highbridge contributors
 // JNI glue for org.highbridge.core.media.NativeCodec2. Encodes whole buffers of 8 kHz 16-bit PCM.
 #include <jni.h>
 #include <stdint.h>

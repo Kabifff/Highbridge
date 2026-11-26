@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
 import android.content.Intent
@@ -181,10 +183,14 @@ fun SettingsScreen() {
                 }
             }
             SectionLabel("About", Modifier.padding(0.dp))
-            Text("Highbridge is named for Saint Paul's High Bridge, which joins West 7th to the West Side bluffs. It's free and open source (GPL-3.0).", style = MaterialTheme.typography.bodyMedium)
+            Text("Highbridge is named for Saint Paul's High Bridge, which joins West 7th to the West Side bluffs.", style = MaterialTheme.typography.bodyMedium)
+            Text(LEGAL_NOTICE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = { nav.navigate("licenses") }) { Text("Open-source licenses") }
+                TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_URL))) }) { Text("Source code") }
+            }
             TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://stpaulmesh.com"))) }) { Text("stpaulmesh.com") }
-            Text("Uses Meshtastic protobufs (GPL-3.0), Codec2 (LGPL-2.1), Reticulum and LXMF (Reticulum License), osmdroid (Apache-2.0), usb-serial-for-android (MIT), ZXing (Apache-2.0) and Nordic DFU (BSD-3). Map data © OpenStreetMap contributors.",
-                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Map data © OpenStreetMap contributors.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
