@@ -133,7 +133,6 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
         perms.launch(list.toTypedArray())
         app.radios.toasts.collect { ctx.toast(it, long = true) }
     }
-    LaunchedEffect(pendingRoute) { pendingRoute?.let { nav.navigate(it); consumed() } }
     LaunchedEffect(onboarded) { if (onboarded) runCatching { app.radios.reconnectRemembered() } }
 
     CompositionLocalProvider(LocalNav provides nav) {
@@ -156,7 +155,7 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                     NavigationDrawerItem(label = { Text("stpaulmesh.com") }, selected = false, onClick = { open("https://stpaulmesh.com") })
                     NavigationDrawerItem(label = { Text("Meshtastic docs") }, selected = false, onClick = { open("https://meshtastic.org/docs/") })
                     NavigationDrawerItem(label = { Text("MeshCore") }, selected = false, onClick = { open("https://meshcore.io") })
-                    NavigationDrawerItem(label = { Text("Reticulum manual") }, selected = false, onClick = { open("https://reticulum.network/manual/") })
+                    if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) NavigationDrawerItem(label = { Text("Reticulum manual") }, selected = false, onClick = { open("https://reticulum.network/manual/") })
                 }
             }
         }) {
@@ -203,6 +202,8 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                         composable("settings") { SettingsScreen() }
                         composable("licenses") { LicensesScreen() }
                     }
+                    // After NavHost, so a notification or link that opens the app never navigates before the graph exists.
+                    LaunchedEffect(pendingRoute) { pendingRoute?.let { runCatching { nav.navigate(it) }; consumed() } }
                 }
             }
         }

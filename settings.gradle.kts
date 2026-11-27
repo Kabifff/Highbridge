@@ -15,5 +15,8 @@ dependencyResolutionManagement {
 rootProject.name = "Highbridge"
 include(
     ":app", ":core-protocol", ":core-media", ":feature-bridge",
-    ":protocol-meshtastic", ":protocol-meshcore", ":protocol-reticulum", ":rns-python"
+    ":protocol-meshtastic", ":protocol-meshcore", ":protocol-reticulum"
 )
+// The Python/Reticulum module is only for the full edition. Builders of the store edition
+// (F-Droid) pass -Phb.liteOnly=true so no Python tooling is configured at all.
+if (providers.gradleProperty("hb.liteOnly").orNull != "true") include(":rns-python")

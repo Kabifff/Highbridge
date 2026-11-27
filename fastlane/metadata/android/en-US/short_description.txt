@@ -1,0 +1,1 @@
+Meshtastic and MeshCore in one app, with a bridge between the two meshes

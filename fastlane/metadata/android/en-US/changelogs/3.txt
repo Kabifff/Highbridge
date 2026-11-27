@@ -1,0 +1,6 @@
+First store release.
+- Meshtastic and MeshCore over Bluetooth and USB-C, with a bridge between them
+- Photos and Codec2 voice notes over LoRa
+- Every LoRa region, with power and airtime limits
+- Field tools: map, compass, traceroute, range test, GPX, SOS and more
+- Location sharing on the mesh now limited to every 15 minutes (2 when moving)

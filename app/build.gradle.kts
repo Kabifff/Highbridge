@@ -70,7 +70,12 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
     packaging { resources { excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/INDEX.LIST", "META-INF/DEPENDENCIES") } }
-    testOptions { unitTests.isReturnDefaultValues = true }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+        // Store screenshots: ./gradlew :app:testLiteDebugUnitTest --tests '*StoreScreenshots*' -Phb.shots
+        unitTests.all { it.systemProperty("hb.shots", if (project.hasProperty("hb.shots")) "on" else "off"); it.maxHeapSize = "2g" }
+    }
 }
 
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
@@ -82,7 +87,7 @@ dependencies {
     implementation(project(":protocol-meshtastic"))
     implementation(project(":protocol-meshcore"))
     implementation(project(":protocol-reticulum"))
-    "fullImplementation"(project(":rns-python"))
+    if (findProject(":rns-python") != null) "fullImplementation"(project(":rns-python"))
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
@@ -108,6 +113,11 @@ dependencies {
     implementation("no.nordicsemi.android:dfu:2.5.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.18.1")
+    testImplementation("androidx.test:core-ktx:1.6.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 android.lint {

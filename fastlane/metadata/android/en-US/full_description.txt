@@ -1,0 +1,33 @@
+<p><b>Highbridge</b> talks to Meshtastic and MeshCore LoRa radios from one app, and can bridge public channels between the two networks. It was made in the West 7th neighborhood of Saint Paul, Minnesota, and works on every LoRa band in the world.</p>
+
+<p><b>Chat and the bridge</b></p>
+<ul>
+<li>Channels and direct messages on Meshtastic and MeshCore radios, over Bluetooth or USB-C</li>
+<li>Bridge mode copies public channel messages from one mesh to the other, tagged with where they came from. Direct messages are never bridged, and loops are blocked</li>
+<li>Small photos and Codec2 voice notes sent in pieces, with automatic resend of missing pieces</li>
+<li>Delivery receipts, unread counts and notifications</li>
+</ul>
+
+<p><b>Radios and regions</b></p>
+<ul>
+<li>All 27 Meshtastic regions and MeshCore presets, with each region's power and duty-cycle limits</li>
+<li>Airtime meter that warns before you pass your region's legal limit</li>
+<li>Encrypted channels shared by QR code or link</li>
+<li>MeshCore repeater admin: login, status, remote commands and path editing</li>
+<li>USB terminal, UF2 and ESP32 flashing, nRF52 Bluetooth updates, and firmware release checks</li>
+</ul>
+
+<p><b>Field tools</b></p>
+<ul>
+<li>Offline-capable map of nodes, node list with signal and battery, compass to any node</li>
+<li>Traceroute, topology graph, range test with a heatmap, and GPX track recording</li>
+<li>One-tap check-in and SOS, geofence alerts, barometer forecast, Morse keyer, ATAK position bridge</li>
+<li>Power profiles that save battery, with an automatic switch at low battery</li>
+<li>Optional PIN lock and encrypted backups</li>
+</ul>
+
+<p>No accounts, no ads, no tracking. Messages travel radio to radio and never pass through a server.</p>
+
+<p>This edition covers Meshtastic and MeshCore. A full edition that adds Reticulum (Sideband, MeshChat, NomadNet) is on the project's GitHub releases page.</p>
+
+<p>Highbridge is free software under the GNU GPL v3 or later. It is not affiliated with the Meshtastic, MeshCore or Reticulum projects.</p>

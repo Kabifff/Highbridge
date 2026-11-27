@@ -1,0 +1,31 @@
+# F-Droid build recipe for the lite edition. Submit as metadata/com.stpaulmesh.highbridge.yml
+# in a merge request to https://gitlab.com/fdroid/fdroiddata (see store/RELEASING.md).
+Categories:
+  - Connectivity
+License: GPL-3.0-or-later
+AuthorName: Kabifff
+WebSite: https://stpaulmesh.com
+SourceCode: https://github.com/Kabifff/Highbridge
+IssueTracker: https://github.com/Kabifff/Highbridge/issues
+Changelog: https://github.com/Kabifff/Highbridge/releases
+
+AutoName: Highbridge
+
+RepoType: git
+Repo: https://github.com/Kabifff/Highbridge.git
+
+Builds:
+  - versionName: 0.2.0
+    versionCode: 3
+    commit: v0.2.0
+    subdir: app
+    gradle:
+      - lite
+    gradleprops:
+      - hb.liteOnly=true
+    ndk: 28.2.13676358
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9.]+$
+CurrentVersion: 0.2.0
+CurrentVersionCode: 3
