@@ -98,6 +98,23 @@ fun everything() = runBlocking {
     check("MeshCore reset path = 13 + 32-byte key", org.highbridge.protocol.meshcore.MC.resetPath(ByteArray(32)).let { it[0] == 13.toByte() && it.size == 33 })
     val cli = org.highbridge.protocol.meshcore.MC.remoteCli(ByteArray(6) { 7 }, "neighbors")
     check("MeshCore CLI frame: type 2, txt_type 1, len 13+text", cli[0] == 2.toByte() && cli[1] == 1.toByte() && cli.size == 13 + 9)
+    // MeshCore #channels and share links
+    fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
+    check("#mesh key matches MeshCore", hex(EncryptedChannel.meshCoreHashtag("mesh").rawKeyBytes()) == "5b664cde0b08b220612113db980650f3")
+    check("#hackerspacenijmegen key matches MeshCore", hex(EncryptedChannel.meshCoreHashtag("#hackerspacenijmegen").rawKeyBytes()) == "f7eaefaa8f8098f31e7ff589c54f88a6")
+    check("Hashtag names normalize", EncryptedChannel.normalizeHashtag(" #St Paul ") == "#st-paul")
+    val mcLink = EncryptedChannel.fromShareUri("meshcore://channel/add?name=%23hackerspacenijmegen&secret=f7eaefaa8f8098f31e7ff589c54f88a6")
+    check("MeshCore app link imports with auto slot", mcLink != null && mcLink.slotIndex == EncryptedChannel.AUTO_SLOT && EncryptedChannel.isHashtag(mcLink))
+    check("MeshCore link round-trips", mcLink != null && EncryptedChannel.fromShareUri(EncryptedChannel.toMeshCoreUri(mcLink))?.keyBase64Url == mcLink.keyBase64Url)
+    check("Private channel with auto slot", EncryptedChannel.createRandom(ProtocolType.MESHTASTIC, EncryptedChannel.AUTO_SLOT, "Family").rawKeyBytes().size == 32)
+    check("Bad MeshCore link rejected", EncryptedChannel.fromShareUri("meshcore://channel/add?name=x&secret=zz") == null)
+    val di = ByteArray(80).also { it[0] = 13; it[1] = 8; it[3] = 40 }
+    check("MeshCore device info reads 40 channels", org.highbridge.protocol.meshcore.MC.parseDeviceInfo(di)?.maxChannels == 40)
+    check("Old MeshCore firmware: 8 channels", org.highbridge.protocol.meshcore.MC.parseDeviceInfo(ByteArray(80).also { it[1] = 2; it[3] = 40 })?.maxChannels == 8)
+    // Firmware lists
+    check("Board hint from Meshtastic", org.highbridge.app.flasher.UpdateChecker.boardHint("Meshtastic 2.7.15 · HELTEC_V4") == "heltec-v4")
+    check("Flashable filter", org.highbridge.app.flasher.UpdateChecker.isFlashable("firmware-heltec-v4-2.7.15.abc.bin") &&
+        !org.highbridge.app.flasher.UpdateChecker.isFlashable("firmware-2.7.26.json") && !org.highbridge.app.flasher.UpdateChecker.isFlashable("x.elf"))
     // Security
     val blob = EncryptedBackupManager.encrypt("keys".toByteArray(), "correct horse".toCharArray())
     check("Backup round-trips", EncryptedBackupManager.decrypt(blob, "correct horse".toCharArray()).decodeToString() == "keys")

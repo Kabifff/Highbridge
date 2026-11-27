@@ -109,7 +109,12 @@ fun ChatsScreen(openDrawer: () -> Unit) {
     val radios by app.radios.radios.collectAsState()
     val bridge = org.highbridge.feature.bridge.MeshBridgeService.current
     val names = nodes.associate { it.key to it.longName }
-    val channelNames = radios.values.flatMap { r -> r.channels.value.map { "${r.protocol.name}:ch:${it.index}" to it.name } }.toMap()
+    val radioChannels by remember(radios) {
+        if (radios.isEmpty()) kotlinx.coroutines.flow.flowOf(emptyList())
+        else kotlinx.coroutines.flow.combine(radios.values.map { it.channels }) { lists -> lists.flatMap { it.toList() } }
+    }.collectAsState(emptyList())
+    val channelNames = radioChannels.associate { "${it.protocol.name}:ch:${it.index}" to it.name }
+    var newChat by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         HbHeader("Highbridge", "West 7th · ${radios.size} radio${if (radios.size == 1) "" else "s"} connected", skyline = true, actions = {
@@ -143,15 +148,19 @@ fun ChatsScreen(openDrawer: () -> Unit) {
         Box(Modifier.weight(1f)) {
             LazyColumn {
                 val (channels, dms) = convs.partition { it.conversation.split(':')[1] == "ch" }
-                if (channels.isNotEmpty()) item { SectionLabel("Channels") }
+                // Every channel on a connected radio shows here, even before its first message.
+                val quiet = channelNames.keys.filter { k -> channels.none { it.conversation == k } }.sorted()
+                if (channels.isNotEmpty() || quiet.isNotEmpty()) item { SectionLabel("Channels") }
                 items(channels) { c -> ConversationRow(c.conversation, conversationTitle(c.conversation, names, channelNames), "${c.lastFrom}: ${c.lastText}", c.lastTime, c.unread) }
+                items(quiet) { k -> ConversationRow(k, conversationTitle(k, names, channelNames), "No messages yet", 0L, 0) }
                 if (dms.isNotEmpty()) item { SectionLabel("Direct messages") }
                 items(dms) { c -> ConversationRow(c.conversation, conversationTitle(c.conversation, names, channelNames), c.lastText, c.lastTime, c.unread) }
             }
-            if (radios.isNotEmpty()) FloatingActionButton(onClick = { nav.navigate("nodes") }, Modifier.align(Alignment.BottomEnd).padding(20.dp),
-                containerColor = MaterialTheme.colorScheme.primary) { Icon(Icons.Filled.Add, "New message") }
+            if (radios.isNotEmpty()) FloatingActionButton(onClick = { newChat = true }, Modifier.align(Alignment.BottomEnd).padding(20.dp),
+                containerColor = MaterialTheme.colorScheme.primary) { Icon(Icons.Filled.Add, "New chat") }
         }
     }
+    if (newChat) NewChatDialog(onDismiss = { newChat = false })
 }
 
 @Composable
@@ -167,7 +176,7 @@ private fun ConversationRow(conv: String, title: String, preview: String, time: 
                 fontWeight = FontWeight.Bold, color = if (isChannel) StPaulMeshPalette.Cream else protocolColor(proto))
         }
         Column(Modifier.weight(1f)) {
-            Row { Text(title, Modifier.weight(1f), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(timeAgo(time), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Row { Text(title, Modifier.weight(1f), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(if (time > 0) timeAgo(time) else "", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ProtocolBadge(proto)
                 Text(preview, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -220,7 +229,9 @@ fun ChatScreen(conversation: String) {
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        HbHeader(title, stateLabel, onBack = { nav.popBackStack() }, skyline = true)
+        HbHeader(title, stateLabel, onBack = { nav.popBackStack() }, skyline = true, actions = {
+            if (target.toNodeId == null) ChannelActions(target.protocol, target.channel, title)
+        })
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { org.highbridge.app.ui.Gap(8) }
             items(msgs, key = { it.rowId }) { m -> MessageBubble(m, progress) }

@@ -87,10 +87,11 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
     private val cmdLock = Mutex()
     @Volatile private var pendingReply: CompletableDeferred<ByteArray>? = null
     private var contactBuffer = mutableMapOf<String, MC.Contact>()
-    private val channelInfo = sortedMapOf<Int, MC.ChannelInfo>()
+    private val channelInfo = sortedMapOf<Int, MC.ChannelInfo>() // guarded by itself
     private val ackToPacket = LinkedHashMap<Int, String>()
     private val syncLock = Mutex()
     private var presetForAirtime: LoRaAirtime.Params? = null
+    @Volatile private var maxChannels = 8
 
     override suspend fun connect(address: String): Result<Unit> = runCatching {
         _state.value = ConnectionState.Connecting(link.name)
@@ -133,7 +134,7 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
                 _myId.value = MC.hex(s.publicKey, 6)
                 presetForAirtime = LoRaAirtime.Params(s.sf, s.bwHz.toDouble(), s.cr, preambleSymbols = 8)
             }
-            MC.RESP_DEVICE_INFO -> MC.parseDeviceInfo(f)?.let { _device.value = "MeshCore ${it.version} · ${it.manufacturer}".trim() }
+            MC.RESP_DEVICE_INFO -> MC.parseDeviceInfo(f)?.let { _device.value = "MeshCore ${it.version} · ${it.manufacturer}".trim(); maxChannels = it.maxChannels.coerceIn(1, 64) }
             MC.RESP_CONTACTS_START -> contactBuffer = mutableMapOf()
             MC.RESP_CONTACT, MC.PUSH_NEW_ADVERT -> MC.parseContact(f)?.let { c ->
                 if (code == MC.RESP_CONTACT) contactBuffer[c.prefixHex] = c else { _contacts.value = _contacts.value + (c.prefixHex to c); publishNodes() }
@@ -144,7 +145,7 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
                 if (d.dataType == MC.DATA_TYPE_HIGHBRIDGE)
                     _incoming.emit(MeshPacket("mc-d-${System.nanoTime()}", protocol, "channel-${d.channelIdx}", "MC", null, d.channelIdx, MeshPayload.Binary(256, d.data)))
             }
-            MC.RESP_CHANNEL_INFO -> MC.parseChannelInfo(f)?.let { channelInfo[it.idx] = it }
+            MC.RESP_CHANNEL_INFO -> {} // read by refreshChannels() from the command reply
             MC.RESP_BATT_AND_STORAGE -> if (f.size >= 3) {
                 val mv = ByteBuffer.wrap(f, 1, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt() and 0xFFFF
                 _myId.value?.let { _events.emit(RadioEvent.Telemetry(protocol, it, System.currentTimeMillis(), voltage = mv / 1000f)) }
@@ -211,9 +212,29 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
     suspend fun refreshContacts() { command(MC.getContacts(), 20_000) }
 
     suspend fun refreshChannels() {
-        for (i in 0 until 8) runCatching { command(MC.getChannel(i), 3_000) }.getOrNull()?.let { if (it[0].toInt() != MC.RESP_CHANNEL_INFO) return@let }
-        _channels.value = channelInfo.values.filter { it.name.isNotBlank() }.map { MeshChannel(it.idx, it.name, protocol) }
+        val found = sortedMapOf<Int, MC.ChannelInfo>()
+        for (i in 0 until maxChannels) {
+            val r = runCatching { command(MC.getChannel(i), 3_000) }.getOrNull() ?: break
+            if (r[0].toInt() != MC.RESP_CHANNEL_INFO) break // past the last slot this firmware has
+            MC.parseChannelInfo(r)?.let { found[it.idx] = it }
+        }
+        synchronized(channelInfo) { channelInfo.clear(); channelInfo.putAll(found) }
+        _channels.value = found.values.filter { it.name.isNotBlank() }.map { MeshChannel(it.idx, it.name, protocol, isEncrypted = it.idx != 0) }
             .ifEmpty { listOf(MeshChannel(0, "Public", protocol)) }
+    }
+
+    /** Lowest empty channel slot (slot 0 is the Public channel), or null when all are in use. */
+    fun freeChannelSlot(): Int? {
+        val used = synchronized(channelInfo) { channelInfo.filterValues { it.name.isNotBlank() }.keys.toSet() }
+        return (1 until maxChannels).firstOrNull { it !in used }
+    }
+
+    /** Empties a channel slot on the radio. */
+    suspend fun removeChannel(idx: Int): Result<Unit> = runCatching {
+        require(idx > 0) { "The Public channel can't be removed" }
+        val r = command(MC.setChannel(idx, "", ByteArray(16)))
+        check(r[0].toInt() == MC.RESP_OK) { "Radio refused" }
+        refreshChannels()
     }
 
     private suspend fun syncMessages() = syncLock.withLock {
@@ -234,7 +255,8 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
     override suspend fun sendText(channelIndex: Int, text: String, toNodeId: String?): Result<String> = runCatching {
         if (toNodeId == null) {
             val r = command(MC.sendChannelText(channelIndex, text))
-            check(r[0].toInt() == MC.RESP_OK) { "Radio refused the channel message" }
+            // Firmware answers OK or SENT depending on version.
+            check(r[0].toInt() == MC.RESP_OK || r[0].toInt() == MC.RESP_SENT) { "Radio refused the channel message" }
             airtime(text.toByteArray().size + 16)
             "mc-out-${System.nanoTime()}"
         } else {
@@ -253,7 +275,7 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
 
     override suspend fun sendBinary(channelIndex: Int, portId: Int, data: ByteArray, toNodeId: String?): Result<String> = runCatching {
         val r = command(MC.sendChannelData(channelIndex, data))
-        check(r[0].toInt() == MC.RESP_OK) { "Radio refused the data packet (needs MeshCore firmware with channel data)" }
+        check(r[0].toInt() == MC.RESP_OK || r[0].toInt() == MC.RESP_SENT) { "Radio refused the data packet (needs MeshCore firmware with channel data)" }
         airtime(data.size)
         "mc-bin-${System.nanoTime()}"
     }
@@ -270,6 +292,7 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
 
     override suspend fun applyChannel(channel: EncryptedChannel): Result<Unit> = runCatching {
         require(channel.protocol == ProtocolType.MESHCORE)
+        require(channel.slotIndex in 0 until maxChannels) { "This radio has channel slots 0–${maxChannels - 1}" }
         val r = command(MC.setChannel(channel.slotIndex, channel.name, channel.rawKeyBytes()))
         check(r[0].toInt() == MC.RESP_OK) { "Radio refused the channel" }
         refreshChannels()

@@ -63,10 +63,11 @@ fun ChannelsScreen(importUri: String?) {
     val saved by app.db.dao().channels().collectAsState(emptyList())
     var proto by remember { mutableStateOf(ProtocolType.MESHTASTIC) }
     var name by remember { mutableStateOf("") }
-    var slot by remember { mutableStateOf("1") }
+    var slot by remember { mutableStateOf("") } // empty = next free slot
     var showing by remember { mutableStateOf<EncryptedChannel?>(null) }
     var pendingImport by remember { mutableStateOf<EncryptedChannel?>(null) }
-    val error = EncryptedChannel.validate(proto, slot.toIntOrNull() ?: -1, name.trim())
+    val slotNum = slot.toIntOrNull() ?: EncryptedChannel.AUTO_SLOT
+    val error = EncryptedChannel.validate(proto, slotNum, name.trim())
 
     LaunchedEffect(importUri) { importUri?.let { EncryptedChannel.fromShareUri(it)?.let { c -> pendingImport = c } ?: ctx.toast("That channel link isn't valid", long = true) } }
     val scan = rememberLauncherForActivityResult(ScanContract()) { r ->
@@ -87,12 +88,15 @@ fun ChannelsScreen(importUri: String?) {
                         ProtocolType.RETICULUM -> "512-bit key for a Reticulum group"
                     }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
-                    OutlinedTextField(slot, { slot = it.filter(Char::isDigit) }, Modifier.fillMaxWidth(), label = { Text("Slot") }, singleLine = true)
+                    OutlinedTextField(slot, { slot = it.filter(Char::isDigit) }, Modifier.fillMaxWidth(), label = { Text("Slot (empty = next free slot)") }, singleLine = true)
                     if (error != null && name.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                     Button(enabled = error == null, onClick = {
-                        val c = EncryptedChannel.createRandom(proto, slot.toInt(), name)
-                        scope.launch { val r = app.radios.applyChannel(c); ctx.toast(r.exceptionOrNull()?.message ?: "Channel loaded on your radio", long = true) }
-                        showing = c; name = ""
+                        val c = EncryptedChannel.createRandom(proto, slotNum, name)
+                        name = ""
+                        scope.launch {
+                            app.radios.applyChannel(c).onSuccess { showing = it; ctx.toast("Loaded in slot ${it.slotIndex}") }
+                                .onFailure { showing = c.takeIf { it.slotIndex >= 0 }; ctx.toast(it.message, long = true) }
+                        }
                     }) { Text("Create and load") }
                 }
                 OutlinedButton(onClick = { scan.launch(ScanOptions().setPrompt("Scan a Highbridge channel QR code").setBeepEnabled(false).setOrientationLocked(false)) }, Modifier.fillMaxWidth()) {
@@ -114,22 +118,12 @@ fun ChannelsScreen(importUri: String?) {
         }
     }
 
-    showing?.let { c ->
-        val bmp = remember(c) { BarcodeEncoder().encodeBitmap(c.toShareUri(), BarcodeFormat.QR_CODE, 720, 720) }
-        AlertDialog(onDismissRequest = { showing = null }, confirmButton = { TextButton(onClick = { showing = null }) { Text("Done") } },
-            dismissButton = { TextButton(onClick = {
-                ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, c.toShareUri()), "Share channel"))
-            }) { Text("Share link") } },
-            title = { Text(c.name) },
-            text = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Image(bmp.asImageBitmap(), "Channel QR code", Modifier.size(260.dp))
-                Text("Anyone who scans this can read and post on this channel. Only show it to people you trust.", fontSize = 12.sp)
-            } })
-    }
+    showing?.let { c -> ChannelQrDialog(c) { showing = null } }
     pendingImport?.let { c ->
         AlertDialog(onDismissRequest = { pendingImport = null },
             confirmButton = { TextButton(onClick = { pendingImport = null; scope.launch { app.radios.applyChannel(c).let { ctx.toast(it.exceptionOrNull()?.message ?: "Joined ${c.name}", long = true) } } }) { Text("Join") } },
             dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } },
-            title = { Text("Join ${c.name}?") }, text = { Text("${c.protocol.name.lowercase().replaceFirstChar { it.uppercase() }} channel, slot ${c.slotIndex}. This replaces whatever is in that slot on your radio.") })
+            title = { Text("Join ${c.name}?") }, text = { Text("${c.protocol.name.lowercase().replaceFirstChar { it.uppercase() }} channel. " +
+                if (c.slotIndex == EncryptedChannel.AUTO_SLOT) "It goes in the next free slot on your radio." else "Slot ${c.slotIndex}: this replaces whatever is in that slot on your radio.") })
     }
 }

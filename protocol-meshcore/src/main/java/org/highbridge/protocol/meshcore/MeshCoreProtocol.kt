@@ -78,7 +78,7 @@ object MC {
     /** 128-bit secret only; the firmware rejects 256-bit channel keys. */
     fun setChannel(idx: Int, name: String, secret16: ByteArray): ByteArray {
         require(secret16.size == 16) { "MeshCore channel secrets are 16 bytes" }
-        val n = ByteArray(32); name.toByteArray().copyInto(n, 0, 0, minOf(31, name.toByteArray().size))
+        val n = ByteArray(32); utf8Cap(name, 31).copyInto(n)
         return byteArrayOf(CMD_SET_CHANNEL.toByte(), idx.toByte()) + n + secret16
     }
 
@@ -168,10 +168,13 @@ object MC {
         return SelfInfo(f[2].toInt(), f[3].toInt(), key, lat, lon, freq, bw, f[56].toInt(), f[57].toInt(), String(f, 58, f.size - 58))
     }
 
-    data class DeviceInfo(val firmwareCode: Int, val buildDate: String, val manufacturer: String, val version: String)
+    /** [maxChannels] comes from firmware protocol 3 and later; older firmware has 8 channel slots. */
+    data class DeviceInfo(val firmwareCode: Int, val buildDate: String, val manufacturer: String, val version: String, val maxChannels: Int = 8)
     fun parseDeviceInfo(f: ByteArray): DeviceInfo? {
-        if (f.size < 80) return DeviceInfo(f.getOrNull(1)?.toInt() ?: 0, "", "", "")
-        return DeviceInfo(f[1].toInt(), cstr(f, 8, 12), cstr(f, 20, 40), cstr(f, 60, 20))
+        val code = f.getOrNull(1)?.toInt()?.and(0xFF) ?: 0
+        val maxCh = if (code >= 3 && f.size > 3) (f[3].toInt() and 0xFF).takeIf { it > 0 } ?: 8 else 8
+        if (f.size < 80) return DeviceInfo(code, "", "", "", maxCh)
+        return DeviceInfo(code, cstr(f, 8, 12), cstr(f, 20, 40), cstr(f, 60, 20), maxCh)
     }
 
     data class Message(val isChannel: Boolean, val channelIdx: Int, val senderPrefixHex: String?, val pathLen: Int, val txtType: Int,

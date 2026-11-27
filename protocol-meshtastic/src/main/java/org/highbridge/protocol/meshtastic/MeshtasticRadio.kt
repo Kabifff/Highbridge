@@ -269,11 +269,22 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
     override suspend fun applyChannel(channel: EncryptedChannel): Result<Unit> = runCatching {
         require(channel.protocol == ProtocolType.MESHTASTIC)
         val settings = ChannelSettings(name = channel.name, psk = channel.rawKeyBytes().toByteString())
-        admin(AdminMessage(set_channel = Channel(index = channel.slotIndex, settings = settings,
-            role = if (channel.slotIndex == 0) Channel.Role.PRIMARY else Channel.Role.SECONDARY)))
+        val ch = Channel(index = channel.slotIndex, settings = settings,
+            role = if (channel.slotIndex == 0) Channel.Role.PRIMARY else Channel.Role.SECONDARY)
+        admin(AdminMessage(set_channel = ch))
+        channelSlots[ch.index] = ch
+        _channels.value = (_channels.value.filter { it.index != ch.index } + MeshChannel(ch.index, channel.name, protocol, isEncrypted = true)).sortedBy { it.index }
     }
 
-    /** Writes region, preset, hop limit and power. Power 0 means "region maximum". */
+    /** Disables a secondary channel slot. */
+    suspend fun removeChannel(index: Int): Result<Unit> = runCatching {
+        require(index in 1..7) { "Only secondary channels (1–7) can be removed" }
+        admin(AdminMessage(set_channel = Channel(index = index, role = Channel.Role.DISABLED)))
+        channelSlots.remove(index)
+        _channels.value = _channels.value.filter { it.index != index }
+    }
+
+        /** Writes region, preset, hop limit and power. Power 0 means "region maximum". */
     suspend fun applyLoRa(cfg: MeshtasticLoRaConfig): Result<Unit> = runCatching {
         val base = loraConfig ?: Config.LoRaConfig()
         val region = Config.LoRaConfig.RegionCode.fromValue(cfg.region.code) ?: error("Firmware doesn't know region ${cfg.region.label}")

@@ -29,6 +29,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -44,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -261,37 +263,87 @@ fun UpdatesScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var project by remember { mutableStateOf("Meshtastic") }
+    var includePre by remember { mutableStateOf(false) }
     var releases by remember { mutableStateOf<List<UpdateChecker.Release>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var dl by remember { mutableFloatStateOf(0f) }
+    var openRelease by remember { mutableStateOf<Long?>(null) }
+    var files by remember { mutableStateOf<List<UpdateChecker.Asset>?>(null) }
     val radios by app.radios.radios.collectAsState()
     val radio = radios[when (project) { "Meshtastic" -> ProtocolType.MESHTASTIC; "MeshCore" -> ProtocolType.MESHCORE; else -> ProtocolType.RETICULUM }]
     val installed = radio?.deviceInfo?.collectAsState()?.value
-    LaunchedEffect(project) { error = null; releases = emptyList(); runCatching { UpdateChecker.releases(project) }.onSuccess { releases = it }.onFailure { error = it.message } }
+    var filter by remember(project, installed) { mutableStateOf(UpdateChecker.boardHint(installed)) }
+    LaunchedEffect(project, includePre) {
+        error = null; releases = emptyList(); openRelease = null; files = null; loading = true
+        runCatching { UpdateChecker.releases(project, includePre) }.onSuccess { releases = it }.onFailure { error = it.message ?: "No connection" }
+        loading = false
+    }
+    fun openUrl(u: String) = ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(u)))
     LazyColumn(Modifier.fillMaxSize()) {
         item { HbHeader("Firmware updates", "From each project's GitHub releases", onBack = { nav.popBackStack() }) }
         item {
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { UpdateChecker.PROJECTS.keys.forEach { p -> FilterChip(project == p, { project = p }, { Text(p) }) } }
-            installed?.let { Text("Your radio: $it", Modifier.padding(16.dp, 8.dp)) }
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Include alpha / pre-releases", Modifier.weight(1f)); Switch(includePre, { includePre = it })
+            }
+            installed?.let { Text("Your radio: $it", Modifier.padding(16.dp, 4.dp)) }
+            OutlinedTextField(filter, { filter = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp), singleLine = true,
+                label = { Text("Board (filters the file list)") }, placeholder = { Text("e.g. heltec-v3, rak4631, t-echo") })
+            UpdateChecker.WEB_FLASHERS[project]?.let { url -> TextButton(onClick = { openUrl(url) }, Modifier.padding(horizontal = 8.dp)) { Text("Open the $project web flasher") } }
+            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
             error?.let { Text("Couldn't check: $it", Modifier.padding(16.dp), color = StPaulMeshPalette.Danger) }
+            if (!loading && error == null && releases.isEmpty())
+                Text(if (includePre) "No releases found." else "No stable releases in the latest 40. Turn on pre-releases to see newer builds.", Modifier.padding(16.dp))
             if (dl > 0f && dl < 1f) LinearProgressIndicator(progress = { dl }, Modifier.fillMaxWidth().padding(16.dp))
         }
-        items(releases) { r ->
+        items(releases, key = { it.id }) { r ->
             Column(Modifier.padding(16.dp, 8.dp)) {
-                Text("${r.tag} ${if (UpdateChecker.isNewer(r.tag, installed?.substringAfter(' ')?.substringBefore(' '))) "· newer than yours" else ""}", fontWeight = FontWeight.Bold)
-                Text(r.publishedAt.take(10), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                r.assets.filter { it.name.endsWith(".zip") || it.name.endsWith(".bin") || it.name.endsWith(".uf2") }.take(12).forEach { a ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${r.tag}${if (r.prerelease) " · pre-release" else ""}", fontWeight = FontWeight.Bold)
+                        Text(r.publishedAt.take(10) + if (UpdateChecker.isNewer(r.tag, installed?.substringAfter(' ')?.substringBefore(' '))) " · newer than yours" else "",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     TextButton(onClick = {
-                        scope.launch {
-                            runCatching { UpdateChecker.download(a, File(ctx.getExternalFilesDir(null), "firmware")) { dl = it } }
-                                .onSuccess { ctx.toast("Saved ${it.name}. Open USB-C & flashing to install it.", long = true); dl = 0f }
-                                .onFailure { ctx.toast(it.message, long = true) }
+                        if (openRelease == r.id) { openRelease = null; files = null } else {
+                            openRelease = r.id; files = null
+                            scope.launch {
+                                runCatching { UpdateChecker.allAssets(project, r.id) }
+                                    .onSuccess { all -> if (openRelease == r.id) files = all.filter { UpdateChecker.isFlashable(it.name) } }
+                                    .onFailure { e -> if (openRelease == r.id) { files = emptyList(); ctx.toast(e.message, long = true) } }
+                            }
                         }
-                    }) { Text("${a.name} · ${a.sizeBytes / 1024} KB", fontSize = 12.sp) }
+                    }) { Text(if (openRelease == r.id) "Hide files" else "Show files") }
+                }
+                if (openRelease == r.id) {
+                    val list = files
+                    when {
+                        list == null -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                        list.isEmpty() -> Column {
+                            Text("No firmware files are attached to this release. Use the web flasher instead.", fontSize = 13.sp)
+                            UpdateChecker.WEB_FLASHERS[project]?.let { url -> TextButton(onClick = { openUrl(url) }) { Text("Open web flasher") } }
+                        }
+                        else -> {
+                            val terms = filter.lowercase().split(Regex("[\\s,]+")).filter { it.isNotBlank() }
+                            val shown = list.filter { a -> terms.isEmpty() || terms.all { a.name.lowercase().contains(it) } }
+                            Text("${shown.size} of ${list.size} files${if (terms.isNotEmpty()) " match \"$filter\"" else ""}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (shown.isEmpty()) TextButton(onClick = { filter = "" }) { Text("Clear the board filter") }
+                            shown.take(60).forEach { a ->
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        runCatching { UpdateChecker.download(a, File(ctx.getExternalFilesDir(null), "firmware")) { dl = it } }
+                                            .onSuccess { ctx.toast("Saved ${it.name}. Open USB-C & flashing to install it.", long = true); dl = 0f }
+                                            .onFailure { ctx.toast(it.message, long = true); dl = 0f }
+                                    }
+                                }) { Text("${a.name} · ${a.sizeBytes / 1024} KB", fontSize = 12.sp) }
+                            }
+                            if (shown.size > 60) Text("Type more of your board's name to narrow the list.", fontSize = 12.sp)
+                        }
+                    }
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         }
     }
 }
-

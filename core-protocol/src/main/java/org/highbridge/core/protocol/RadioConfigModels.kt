@@ -116,8 +116,11 @@ data class EncryptedChannel(
             ProtocolType.RETICULUM -> 64
         }
 
+        /** Slot index meaning "the next free slot on the radio", filled in when the channel is loaded. */
+        const val AUTO_SLOT = -1
+
         fun validate(protocol: ProtocolType, slotIndex: Int, name: String): String? = when {
-            slotIndex < 0 || slotIndex > maxSlot(protocol) -> "Slot must be 0–${maxSlot(protocol)}"
+            slotIndex != AUTO_SLOT && (slotIndex < 0 || slotIndex > maxSlot(protocol)) -> "Slot must be 0–${maxSlot(protocol)}"
             name.isBlank() -> "Name can't be empty"
             name.toByteArray(StandardCharsets.UTF_8).size > maxNameBytes(protocol) -> "Name is too long (max ${maxNameBytes(protocol)} bytes)"
             else -> null
@@ -130,8 +133,43 @@ data class EncryptedChannel(
             return EncryptedChannel(protocol = protocol, slotIndex = slotIndex, name = clean, keyBase64Url = B64_ENCODER.encodeToString(bytes))
         }
 
+        /**
+         * MeshCore hashtag channel: anyone who knows the name can join. The key is the first 16 bytes
+         * of SHA-256 of the name including "#", as the MeshCore app does. Names are kept lowercase so
+         * "#StPaul" and "#stpaul" land in the same channel.
+         */
+        fun normalizeHashtag(name: String): String = "#" + name.trim().trimStart('#').lowercase().replace(Regex("\\s+"), "-")
+
+        fun meshCoreHashtag(name: String, slotIndex: Int = AUTO_SLOT): EncryptedChannel {
+            val n = normalizeHashtag(name)
+            require(n.length > 1) { "Type a channel name" }
+            validate(ProtocolType.MESHCORE, slotIndex, n)?.let { throw IllegalArgumentException(it) }
+            val key = java.security.MessageDigest.getInstance("SHA-256").digest(n.toByteArray(StandardCharsets.UTF_8)).copyOf(16)
+            return EncryptedChannel(protocol = ProtocolType.MESHCORE, slotIndex = slotIndex, name = n, keyBase64Url = B64_ENCODER.encodeToString(key))
+        }
+
+        fun isHashtag(c: EncryptedChannel): Boolean = c.protocol == ProtocolType.MESHCORE && c.name.startsWith("#") &&
+            runCatching { meshCoreHashtag(c.name).keyBase64Url == c.keyBase64Url }.getOrDefault(false)
+
+        /** MeshCore app share link: meshcore://channel/add?name=<name>&secret=<32 hex>. */
+        fun toMeshCoreUri(c: EncryptedChannel): String =
+            "meshcore://channel/add?name=${enc(c.name).replace("+", "%20")}&secret=" + c.rawKeyBytes().joinToString("") { "%02x".format(it) }
+
+        private fun fromMeshCoreUri(s: String): EncryptedChannel? {
+            val q = s.substringAfter('?', "").split('&').mapNotNull {
+                val kv = it.split('=', limit = 2)
+                if (kv.size == 2) kv[0] to URLDecoder.decode(kv[1], "UTF-8") else null
+            }.toMap()
+            val name = q["name"]?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            val hex = q["secret"]?.trim()?.takeIf { it.length == 32 && it.all { ch -> ch.isDigit() || ch.lowercaseChar() in 'a'..'f' } } ?: return null
+            if (validate(ProtocolType.MESHCORE, AUTO_SLOT, name) != null) return null
+            val key = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            return EncryptedChannel(protocol = ProtocolType.MESHCORE, slotIndex = AUTO_SLOT, name = name, keyBase64Url = B64_ENCODER.encodeToString(key))
+        }
+
         fun fromShareUri(uriString: String): EncryptedChannel? = runCatching {
             val s = uriString.trim()
+            if (s.startsWith("meshcore://", ignoreCase = true)) return fromMeshCoreUri(s)
             val prefix = "highbridge://channel?"
             if (!s.startsWith(prefix, ignoreCase = true)) return null
             val q = s.substring(prefix.length).split('&').mapNotNull {

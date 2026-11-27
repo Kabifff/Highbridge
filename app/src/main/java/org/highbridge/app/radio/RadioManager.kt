@@ -409,9 +409,44 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         return sent
     }
 
-    suspend fun applyChannel(c: EncryptedChannel): Result<Unit> = runCatching {
-        dao.upsertChannel(ChannelEntity(c.id, c.protocol.name, c.slotIndex, c.name, c.keyBase64Url, System.currentTimeMillis()))
-        radio(c.protocol)?.applyChannel(c)?.getOrThrow() ?: error("Saved. Connect a ${c.protocol.shortTag} radio to load it.")
+    /**
+     * Saves a channel and loads it on the radio. A channel with [EncryptedChannel.AUTO_SLOT] goes in the
+     * next free slot. Returns the channel as loaded (with its real slot).
+     */
+    suspend fun applyChannel(c: EncryptedChannel): Result<EncryptedChannel> = runCatching {
+        val radio = radio(c.protocol)
+        val placed = if (c.slotIndex != EncryptedChannel.AUTO_SLOT) c else {
+            radio ?: error("Connect a ${c.protocol.shortTag} radio first, so Highbridge can pick a free channel slot.")
+            // Already on the radio under the same name and key? Use that slot.
+            val existing = dao.channelsNow().firstOrNull { it.protocol == c.protocol.name && it.name == c.name && it.keyB64 == c.keyBase64Url }
+                ?.slot?.takeIf { s -> radio.channels.value.any { it.index == s && it.name == c.name } }
+            c.copy(slotIndex = existing ?: nextFreeSlot(c.protocol) ?: error("All ${c.protocol.shortTag} channel slots are in use. Leave one first."))
+        }
+        dao.upsertChannel(ChannelEntity(placed.id, placed.protocol.name, placed.slotIndex, placed.name, placed.keyBase64Url, System.currentTimeMillis()))
+        (radio ?: error("Saved. Connect a ${placed.protocol.shortTag} radio to load it.")).applyChannel(placed).getOrThrow()
+        placed
+    }
+
+    /** First empty channel slot on the connected radio (never slot 0, the primary/public channel). */
+    suspend fun nextFreeSlot(p: ProtocolType): Int? {
+        val r = radio(p) ?: return null
+        val used = r.channels.value.map { it.index }.toSet()
+        return when (p) {
+            ProtocolType.MESHTASTIC -> (1..EncryptedChannel.maxSlot(p)).firstOrNull { it !in used }
+            ProtocolType.MESHCORE -> (r as? MeshCoreRadio)?.freeChannelSlot()
+            ProtocolType.RETICULUM -> maxOf(used.maxOrNull() ?: 0, dao.channelsNow().filter { it.protocol == p.name }.maxOfOrNull { it.slot } ?: 0) + 1
+        }
+    }
+
+    /** Takes a channel off the radio and forgets its saved key. Slot 0 stays. */
+    suspend fun leaveChannel(p: ProtocolType, slot: Int): Result<Unit> = runCatching {
+        require(slot > 0) { "The primary channel can't be removed" }
+        when (p) {
+            ProtocolType.MESHCORE -> (radio(p) as? MeshCoreRadio)?.removeChannel(slot)?.getOrThrow()
+            ProtocolType.MESHTASTIC -> meshtastic?.removeChannel(slot)?.getOrThrow()
+            ProtocolType.RETICULUM -> {}
+        }
+        dao.channelsNow().filter { it.protocol == p.name && it.slot == slot }.forEach { dao.deleteChannel(it.id) }
     }
 
     private suspend fun rejoinGroups(r: ReticulumRadio) {
