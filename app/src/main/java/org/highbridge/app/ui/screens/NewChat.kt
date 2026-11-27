@@ -213,3 +213,34 @@ fun ChannelQrDialog(c: EncryptedChannel, onDismiss: () -> Unit) {
             }, fontSize = 12.sp)
         } })
 }
+
+/** Search every message on every network. */
+@Composable
+fun SearchScreen() {
+    val app = HighbridgeApp.instance
+    val nav = LocalNav.current
+    var q by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<org.highbridge.app.data.MessageEntity>>(emptyList()) }
+    androidx.compose.runtime.LaunchedEffect(q) {
+        kotlinx.coroutines.delay(250)
+        results = if (q.trim().length < 2) emptyList() else app.db.dao().searchMessages(q.trim())
+    }
+    Column {
+        org.highbridge.app.ui.HbHeader("Search messages", "All networks", onBack = { nav.popBackStack() })
+        OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().padding(16.dp, 4.dp), label = { Text("Search") }, singleLine = true)
+        if (q.trim().length >= 2 && results.isEmpty()) Text("No messages match.", Modifier.padding(16.dp))
+        LazyColumn {
+            items(results, key = { it.rowId }) { m ->
+                Column(Modifier.fillMaxWidth().clickable { nav.navigate("chat/${Uri.encode(m.conversation)}") }.padding(16.dp, 8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ProtocolBadge(ProtocolType.valueOf(m.protocol))
+                        Text(m.fromName, fontWeight = FontWeight.Bold)
+                        Text(timeAgo(m.timeMs), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(m.text, maxLines = 3)
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            }
+        }
+    }
+}

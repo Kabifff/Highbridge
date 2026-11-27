@@ -96,6 +96,8 @@ import kotlin.math.sin
 fun ToolsScreen() {
     val nav = LocalNav.current
     val tools = listOf(
+        "wardrive" to ("Wardriving" to "Map where Meshtastic and MeshCore reach, live on stpaulmesh.com"),
+        "search" to ("Search messages" to "Find any message on any network"),
         "checkin" to ("Check-in & SOS" to "One tap to tell everyone you're OK, or that you need help"),
         "topology" to ("Topology graph" to "Who hears whom, by hops and signal, without GPS"),
         "geofences" to ("Geofences" to "Alerts when a node leaves an area or drifts off a trail"),

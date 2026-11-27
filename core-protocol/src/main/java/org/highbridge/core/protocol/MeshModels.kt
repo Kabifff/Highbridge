@@ -38,7 +38,8 @@ data class MeshChannel(
 )
 
 sealed interface MeshPayload {
-    data class Text(val body: String) : MeshPayload
+    /** [replyTo] = packet id this answers; [emoji] = a tapback reaction (the body is one emoji). */
+    data class Text(val body: String, val replyTo: String? = null, val emoji: Boolean = false) : MeshPayload
     data class Binary(val portId: Int, val data: ByteArray) : MeshPayload {
         override fun equals(other: Any?): Boolean =
             other is Binary && portId == other.portId && data.contentEquals(other.data)
@@ -93,6 +94,15 @@ sealed interface RadioEvent {
     data class AdminReply(override val protocol: ProtocolType, val fromId: String, val text: String) : RadioEvent
     data class Log(override val protocol: ProtocolType, val line: String) : RadioEvent
     data class Airtime(override val protocol: ProtocolType, val txMs: Long) : RadioEvent
+    /** A map pin someone shared (Meshtastic waypoints). [expireMs] 0 = never; [deleted] = the sender removed it. */
+    data class Waypoint(override val protocol: ProtocolType, val id: Int, val name: String, val description: String, val lat: Double, val lon: Double,
+                        val icon: Int, val expireMs: Long, val fromId: String, val deleted: Boolean = false) : RadioEvent
+    /**
+     * One packet the radio heard on air, before decryption (MeshCore RX log). [lastHop] is the hash prefix of
+     * the repeater that sent it to us, null if it came straight from its origin. [channelHash] is set for group messages.
+     */
+    data class RxLog(override val protocol: ProtocolType, val snr: Float, val rssi: Int, val payloadType: Int, val pathLen: Int,
+                     val lastHop: String?, val channelHash: Int?, val timeMs: Long = System.currentTimeMillis()) : RadioEvent
 }
 
 /** A connected radio with the richer features the app's screens use. The bridge only needs [MeshTransport]. */
@@ -105,4 +115,14 @@ interface MeshRadio : MeshTransport {
     suspend fun requestTraceroute(nodeId: String): Result<Unit> = Result.failure(UnsupportedOperationException("Not supported"))
     suspend fun applyChannel(channel: EncryptedChannel): Result<Unit> = Result.failure(UnsupportedOperationException("Not supported"))
     suspend fun setOwnerName(longName: String, shortName: String): Result<Unit> = Result.failure(UnsupportedOperationException("Not supported"))
+    /** Text with a reply link or as a reaction. Radios without these send plain text. */
+    suspend fun sendText(channelIndex: Int, text: String, toNodeId: String?, replyTo: String?, emoji: Boolean): Result<String> = sendText(channelIndex, text, toNodeId)
+    /** Shares a map pin with the channel. [id] 0 = new; delete by sending [expireMs] 1. */
+    suspend fun sendWaypoint(channelIndex: Int, id: Int, name: String, description: String, lat: Double, lon: Double, icon: Int, expireMs: Long): Result<Int> =
+        Result.failure(UnsupportedOperationException("This radio doesn't support shared waypoints"))
+    /**
+     * A wardriving ping from here. Meshtastic: a position broadcast that counts as heard when a nearby
+     * node rebroadcasts it (an Ack event for the returned id). MeshCore: a message on the #wardriving channel.
+     */
+    suspend fun sendWardrivePing(lat: Double, lon: Double): Result<String> = Result.failure(UnsupportedOperationException("Not supported"))
 }

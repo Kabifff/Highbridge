@@ -32,6 +32,11 @@ class Prefs(ctx: Context) {
     val pinRecord = state(sp.getString("pin", null))
     val duressRecord = state(sp.getString("duress", null))
     val darkMode = state(sp.getString("dark", "SYSTEM") ?: "SYSTEM")
+    /** Wardriving: share coverage with the stpaulmesh.com map; ping actively; skip a circle around home. */
+    val wardriveUpload = state(sp.getBoolean("wdUpload", true))
+    val wardrivePing = state(sp.getBoolean("wdPing", true))
+    val wardriveHome = state(sp.getString("wdHome", "") ?: "")
+    val wardriveHideM = state(sp.getInt("wdHideM", 400))
 
     private fun save(block: SharedPreferences.Editor.() -> Unit) = sp.edit().apply(block).apply()
 
@@ -49,6 +54,10 @@ class Prefs(ctx: Context) {
     fun setRnsAuto(v: Boolean) { rnsAuto.value = v; save { putBoolean("rnsAuto", v) } }
     fun setRnsTcpHosts(v: String) { rnsTcpHosts.value = v; save { putString("rnsTcp", v) } }
     fun setDarkMode(v: String) { darkMode.value = v; save { putString("dark", v) } }
+    fun setWardriveUpload(v: Boolean) { wardriveUpload.value = v; save { putBoolean("wdUpload", v) } }
+    fun setWardrivePing(v: Boolean) { wardrivePing.value = v; save { putBoolean("wdPing", v) } }
+    fun setWardriveHome(v: String) { wardriveHome.value = v; save { putString("wdHome", v) } }
+    fun setWardriveHideM(v: Int) { wardriveHideM.value = v; save { putInt("wdHideM", v) } }
     /** "BLE|MESHTASTIC|AA:BB:..." or "USB|AUTO|vid:pid", used to reconnect after a reboot. */
     fun rememberDevice(entry: String) {
         val kind = entry.substringBefore('|') + "|" + entry.split('|').getOrNull(1)

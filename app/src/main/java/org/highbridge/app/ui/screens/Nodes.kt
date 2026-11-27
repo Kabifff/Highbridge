@@ -68,9 +68,11 @@ fun NodesScreen() {
     val me by app.radios.myLocation.collectAsState()
     val metric by app.prefs.metric.collectAsState()
     var filter by remember { mutableStateOf<ProtocolType?>(null) }
+    var favOnly by remember { mutableStateOf(false) }
+    var showIgnored by remember { mutableStateOf(false) }
     var showStale by remember { mutableStateOf(false) }
     val now = System.currentTimeMillis()
-    val shown = nodes.filter { filter == null || it.protocol == filter!!.name }.filter { showStale || it.lastHeardMs == 0L || now - it.lastHeardMs < stale * 60_000L }
+    val shown = nodes.filter { filter == null || it.protocol == filter!!.name }.filter { (!favOnly || it.favorite) && (showIgnored || !it.ignored) }.filter { showStale || it.lastHeardMs == 0L || now - it.lastHeardMs < stale * 60_000L }
         .sortedWith(compareByDescending<org.highbridge.app.data.NodeEntity> { it.favorite }.thenByDescending { it.lastHeardMs })
 
     Column(Modifier.fillMaxSize()) {
@@ -79,6 +81,8 @@ fun NodesScreen() {
             item { FilterChip(filter == null, { filter = null }, { Text("All") }) }
             items(supportedProtocols) { p -> FilterChip(filter == p, { filter = p }, { Text("${p.shortTag} ${nodes.count { it.protocol == p.name }}") }) }
             item { FilterChip(showStale, { showStale = !showStale }, { Text("Include stale") }) }
+            item { FilterChip(favOnly, { favOnly = !favOnly }, { Text("Favorites") }) }
+            if (nodes.any { it.ignored }) item { FilterChip(showIgnored, { showIgnored = !showIgnored }, { Text("Ignored") }) }
         }
         if (shown.isEmpty()) EmptyState("No nodes yet", "Nodes appear as your radios hear them. Try sending an advert or a message.")
         LazyColumn {
@@ -118,7 +122,7 @@ fun NodeDetailScreen(key: String) {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         HbHeader(n.longName, "${proto.shortTag} · ${n.id}", onBack = { nav.popBackStack() }, actions = {
-            IconButton(onClick = { scope.launch { app.db.dao().setFavorite(key, !n.favorite) } }) {
+            IconButton(onClick = { scope.launch { app.db.dao().setFavorite(key, !n.favorite); if (proto == ProtocolType.MESHTASTIC) app.radios.meshtastic?.setFavoriteOnRadio(n.id, !n.favorite) } }) {
                 Icon(if (n.favorite) Icons.Filled.Star else Icons.Filled.StarBorder, "Favorite", tint = StPaulMeshPalette.Gold)
             }
         })
@@ -131,11 +135,22 @@ fun NodeDetailScreen(key: String) {
                     Text("Position %.5f, %.5f".format(n.lat, n.lon))
                     me?.let { Text("${Geo.formatDistance(Geo.distanceM(it.first, it.second, n.lat, n.lon), metric)} · ${Geo.compassPoint(Geo.bearingDeg(it.first, it.second, n.lat, n.lon))}") }
                 }
+                n.altM?.let { Text("Altitude ${if (metric) "$it m" else "${(it * 3.281).toInt()} ft"}") }
                 (n.battery ?: n.voltage)?.let { Text("Battery ${n.battery?.let { "$it%" } ?: ""} ${n.voltage?.let { "%.2f V".format(it) } ?: ""}") }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Ignore this node")
+                    Text("Hides it from lists and the map and drops its messages.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                androidx.compose.material3.Switch(n.ignored, { v -> scope.launch { app.db.dao().setIgnored(key, v); if (proto == ProtocolType.MESHTASTIC) app.radios.meshtastic?.setIgnoredOnRadio(n.id, v) } })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { nav.navigate("chat/${Uri.encode("${n.protocol}:dm:${n.id}")}") }) { Text("Message") }
                 OutlinedButton(onClick = { scope.launch { val r = app.radios.radio(proto)?.requestTraceroute(n.id); ctx.toast(r?.exceptionOrNull()?.message ?: "Traceroute sent") } }) { Text("Traceroute") }
+                if (proto == ProtocolType.MESHCORE) OutlinedButton(onClick = {
+                    scope.launch { ctx.toast(app.radios.meshcore?.requestTelemetry(n.id)?.exceptionOrNull()?.message ?: "Asked for telemetry; the answer shows below when it arrives") }
+                }) { Text("Telemetry") }
                 if (n.lat != null) OutlinedButton(onClick = { nav.navigate("compass/${Uri.encode(key)}") }) { Text("Compass") }
             }
             if (proto == ProtocolType.MESHCORE) OutlinedButton(onClick = { nav.navigate("repeater/${Uri.encode(n.id)}") }) { Text("Repeater admin & path") }

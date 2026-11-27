@@ -12,6 +12,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -88,6 +91,12 @@ fun MapScreen() {
     var rings by remember { mutableStateOf(true) }
     var heatmap by remember { mutableStateOf(false) }
     var hideStale by remember { mutableStateOf(true) }
+    var favoritesOnly by remember { mutableStateOf(false) }
+    var coverage by remember { mutableStateOf(false) }
+    val waypoints by remember { app.db.dao().waypoints(System.currentTimeMillis()) }.collectAsState(emptyList())
+    val myCoverage by app.db.dao().wardriveAllProtocols().collectAsState(emptyList())
+    var dropAt by remember { mutableStateOf<GeoPoint?>(null) }
+    var openWaypoint by remember { mutableStateOf<org.highbridge.app.data.WaypointEntity?>(null) }
     var menu by remember { mutableStateOf(false) }
     var mbtiles by remember { mutableStateOf(File(ctx.filesDir, "osmdroid").listFiles()?.firstOrNull { it.extension == "mbtiles" }) }
     val mapView = remember { MapView(ctx).apply { setMultiTouchControls(true); controller.setZoom(13.0); controller.setCenter(SAINT_PAUL); zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER) } }
@@ -109,7 +118,8 @@ fun MapScreen() {
         HbHeader("Map", "${nodes.count { it.lat != null }} nodes with a position", actions = {
             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Layers, "Map style") }
             DropdownMenu(menu, { menu = false }) {
-                listOf("STANDARD" to "Standard", "TOPO" to "Topographic", "NIGHT" to "Night").forEach { (k, l) -> DropdownMenuItem({ Text(l) }, { app.prefs.setMapStyle(k); menu = false }) }
+                listOf("STANDARD" to "Street", "TOPO" to "Topographic", "USGS_TOPO" to "USGS topo (US, offline OK)", "SATELLITE" to "Satellite (US, offline OK)",
+                    "NIGHT" to "Night").forEach { (k, l) -> DropdownMenuItem({ Text(l) }, { app.prefs.setMapStyle(k); menu = false }) }
                 if (mbtiles != null) DropdownMenuItem({ Text("Offline (.mbtiles)") }, { app.prefs.setMapStyle("MBTILES"); menu = false })
                 DropdownMenuItem({ Text("Import .mbtiles file…") }, { menu = false; importer.launch(arrayOf("*/*")) })
                 DropdownMenuItem({ Text("Save this area for offline use") }, {
@@ -125,6 +135,8 @@ fun MapScreen() {
             item { FilterChip(rings, { rings = !rings }, { Text("Signal rings") }) }
             item { FilterChip(heatmap, { heatmap = !heatmap }, { Text("Range test") }) }
             item { FilterChip(hideStale, { hideStale = !hideStale }, { Text("Hide stale") }) }
+            item { FilterChip(favoritesOnly, { favoritesOnly = !favoritesOnly }, { Text("Favorites only") }) }
+            item { FilterChip(coverage, { coverage = !coverage }, { Text("My coverage") }) }
         }
         Box(Modifier.weight(1f)) {
             AndroidView({ mapView }, Modifier.fillMaxSize(), update = { mv ->
@@ -132,7 +144,20 @@ fun MapScreen() {
                 mv.overlays.clear()
                 val now = System.currentTimeMillis()
                 if (heatmap) drawRange(mv, range)
+                if (coverage) drawCoverage(mv, myCoverage)
                 drawFences(mv, fences)
+                waypoints.forEach { w ->
+                    mv.overlays += Marker(mv).apply {
+                        position = GeoPoint(w.lat, w.lon); title = w.name; snippet = w.description
+                        icon = dot(StPaulMeshPalette.SchmidtBrick.toArgb(), 34, square = true); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        setOnMarkerClickListener { _, _ -> openWaypoint = w; true }
+                    }
+                }
+                // Long-press anywhere to drop a pin.
+                mv.overlays += org.osmdroid.views.overlay.MapEventsOverlay(object : org.osmdroid.events.MapEventsReceiver {
+                    override fun singleTapConfirmedHelper(p: GeoPoint?) = false
+                    override fun longPressHelper(p: GeoPoint?): Boolean { dropAt = p; return p != null }
+                })
                 me?.let { (lat, lon) ->
                     val p = GeoPoint(lat, lon)
                     if (rings) listOf(1000.0, 3000.0, 8000.0).forEach { r ->
@@ -141,7 +166,7 @@ fun MapScreen() {
                     }
                     mv.overlays += Marker(mv).apply { position = p; title = "You"; icon = dot(StPaulMeshPalette.Gold.toArgb(), 26); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER) }
                 }
-                nodes.filter { it.lat != null && it.lon != null && ProtocolType.valueOf(it.protocol) in filter }
+                nodes.filter { it.lat != null && it.lon != null && ProtocolType.valueOf(it.protocol) in filter && !it.ignored && (!favoritesOnly || it.favorite) }
                     .filter { !hideStale || it.lastHeardMs == 0L || now - it.lastHeardMs < stale * 60_000L }
                     .forEach { n -> mv.overlays += nodeMarker(mv, n, me) { nav.navigate("node/${Uri.encode(n.key)}") } }
                 mv.invalidate()
@@ -152,9 +177,80 @@ fun MapScreen() {
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("● Meshtastic", color = StPaulMeshPalette.Meshtastic); Text("● MeshCore", color = StPaulMeshPalette.MeshCore); Text("● Reticulum", color = StPaulMeshPalette.Reticulum)
             }
-            Text("© OpenStreetMap contributors", Modifier.align(Alignment.BottomEnd).padding(6.dp), style = MaterialTheme.typography.labelSmall)
+            Text(if (style == "SATELLITE" || style == "USGS_TOPO") "USGS The National Map" else "© OpenStreetMap contributors",
+                Modifier.align(Alignment.BottomEnd).padding(6.dp), style = MaterialTheme.typography.labelSmall)
         }
     }
+    dropAt?.let { p -> DropWaypointDialog(p.latitude, p.longitude) { dropAt = null } }
+    openWaypoint?.let { w ->
+        androidx.compose.material3.AlertDialog(onDismissRequest = { openWaypoint = null },
+            title = { Text(w.name.ifBlank { "Waypoint" }) },
+            text = { Text(listOfNotNull(w.description.takeIf { it.isNotBlank() }, "%.5f, %.5f".format(w.lat, w.lon),
+                if (w.fromId == "me") "Shared by you" else "Shared by ${w.fromId}",
+                if (w.expireMs > 0) "Expires ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(w.expireMs))}" else null).joinToString("\n")) },
+            confirmButton = { TextButton(onClick = {
+                ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse("geo:${w.lat},${w.lon}?q=${w.lat},${w.lon}(${Uri.encode(w.name)})")))
+            }) { Text("Navigate") } },
+            dismissButton = { TextButton(onClick = {
+                val wp = w; openWaypoint = null
+                kotlinx.coroutines.MainScope().launch { app.radios.deleteWaypoint(wp) }
+            }) { Text("Delete") } })
+    }
+}
+
+/** Long-press on the map: name a pin and share it with your Meshtastic channel. */
+@Composable
+private fun DropWaypointDialog(lat: Double, lon: Double, onDone: () -> Unit) {
+    val app = HighbridgeApp.instance
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var desc by remember { mutableStateOf("") }
+    var hours by remember { mutableStateOf(24) }
+    val canShare = ProtocolType.MESHTASTIC in app.radios.radios.collectAsState().value
+    androidx.compose.material3.AlertDialog(onDismissRequest = onDone,
+        title = { Text("Drop a pin") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("%.5f, %.5f".format(lat, lon), style = MaterialTheme.typography.labelMedium)
+            androidx.compose.material3.OutlinedTextField(name, { name = it.take(29) }, label = { Text("Name") }, singleLine = true)
+            androidx.compose.material3.OutlinedTextField(desc, { desc = it.take(99) }, label = { Text("Note (optional)") })
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(1 to "1 h", 24 to "1 day", 168 to "1 week", 0 to "Never").forEach { (h, l) -> FilterChip(hours == h, { hours = h }, { Text(l) }) }
+            }
+            if (!canShare) Text("Connect a Meshtastic radio to share pins. The pin is kept on this phone either way.", style = MaterialTheme.typography.labelSmall)
+        } },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
+            scope.launch {
+                if (canShare) app.radios.shareWaypoint(ProtocolType.MESHTASTIC, name.trim(), desc.trim(), lat, lon, 0x1F4CD, hours)
+                    .onSuccess { ctx.toast("Pin shared") }.onFailure { ctx.toast(it.message, long = true) }
+                else app.db.dao().upsertWaypoint(org.highbridge.app.data.WaypointEntity("LOCAL:${System.currentTimeMillis()}", "LOCAL", 0, name.trim(), desc.trim(), lat, lon, 0,
+                    if (hours > 0) System.currentTimeMillis() + hours * 3_600_000L else 0L, "me", System.currentTimeMillis()))
+                onDone()
+            }
+        }) { Text(if (canShare) "Share" else "Save") } },
+        dismissButton = { TextButton(onClick = onDone) { Text("Cancel") } })
+}
+
+/** Your own wardriving samples: green strong, yellow fair, orange weak, red very weak, grey nothing heard. */
+private fun drawCoverage(mv: MapView, samples: List<org.highbridge.app.data.WardriveSampleEntity>) {
+    samples.take(3000).forEach { s ->
+        mv.overlays += Polygon(mv).apply {
+            points = Polygon.pointsAsCircle(GeoPoint(s.lat, s.lon), 35.0)
+            val c = coverageColor(s.kind, s.heard, s.snr)
+            fillPaint.color = c; outlinePaint.color = c; outlinePaint.strokeWidth = 1f
+            setOnClickListener { _, _, _ -> false }
+        }
+    }
+}
+
+/** Shared with the website legend: same thresholds as stpaulmesh.com. */
+fun coverageColor(kind: Int, heard: Int, snr: Float?): Int = when {
+    kind == 2 || (kind == 1 && heard == 0) -> AColor.argb(170, 120, 120, 120)
+    snr == null -> AColor.argb(190, 46, 160, 67)
+    snr >= 5f -> AColor.argb(190, 46, 160, 67)
+    snr >= 0f -> AColor.argb(190, 160, 190, 40)
+    snr >= -7f -> AColor.argb(190, 230, 150, 30)
+    else -> AColor.argb(190, 200, 50, 40)
 }
 
 private fun applyStyle(mv: MapView, style: String, mbtiles: File?) {
@@ -170,6 +266,8 @@ private fun applyStyle(mv: MapView, style: String, mbtiles: File?) {
             mv.setUseDataConnection(false)
         }
         "TOPO" -> { mv.setUseDataConnection(true); mv.setTileSource(TileSourceFactory.OpenTopo) }
+        "SATELLITE" -> { mv.setUseDataConnection(true); mv.setTileSource(UsgsTiles("USGSImageryOnly")) }
+        "USGS_TOPO" -> { mv.setUseDataConnection(true); mv.setTileSource(UsgsTiles("USGSTopo")) }
         "NIGHT" -> { mv.setUseDataConnection(true); mv.setTileSource(TileSourceFactory.MAPNIK); mv.overlayManager.tilesOverlay.setColorFilter(TilesOverlay.INVERT_COLORS) }
         else -> { mv.setUseDataConnection(true); mv.setTileSource(TileSourceFactory.MAPNIK) }
     }
@@ -221,4 +319,17 @@ private fun drawFences(mv: MapView, fences: List<GeofenceEntity>) {
             "TRAIL" -> mv.overlays += Polyline(mv).apply { setPoints(pts); outlinePaint.color = color; outlinePaint.strokeWidth = 6f; title = g.name }
         }
     }
+}
+
+/**
+ * USGS The National Map tiles: public domain (US government work), so saving areas for offline use is
+ * allowed, unlike OpenStreetMap's servers. Coverage is the United States. ArcGIS order is z/y/x.
+ */
+private class UsgsTiles(private val layer: String) : org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase(
+    "USGS-$layer", 0, 16, 256, "", arrayOf("https://basemap.nationalmap.gov/arcgis/rest/services/$layer/MapServer/tile/"),
+    "USGS The National Map",
+    org.osmdroid.tileprovider.tilesource.TileSourcePolicy(2, org.osmdroid.tileprovider.tilesource.TileSourcePolicy.FLAG_USER_AGENT_MEANINGFUL)
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String =
+        baseUrl + org.osmdroid.util.MapTileIndex.getZoom(pMapTileIndex) + "/" + org.osmdroid.util.MapTileIndex.getY(pMapTileIndex) + "/" + org.osmdroid.util.MapTileIndex.getX(pMapTileIndex)
 }

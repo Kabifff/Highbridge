@@ -39,6 +39,7 @@ import org.highbridge.app.data.RangeTestEntity
 import org.highbridge.app.data.RouteEntity
 import org.highbridge.app.data.TelemetryEntity
 import org.highbridge.app.data.TrackPointEntity
+import org.highbridge.app.data.WaypointEntity
 import org.highbridge.app.pro.AirtimeMonitor
 import org.highbridge.app.pro.AtakCotBridge
 import org.highbridge.app.pro.GeofenceRules
@@ -118,6 +119,9 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     }
 
     fun radio(p: ProtocolType) = _radios.value[p]
+
+    /** Coverage recording for the stpaulmesh.com wardriving maps. */
+    val wardriver by lazy { Wardriver(ctx, dao, prefs, scope, { radio(it) }, { !airtime.mustHold() }) }
     val meshtastic get() = radio(ProtocolType.MESHTASTIC) as? MeshtasticRadio
     val meshcore get() = radio(ProtocolType.MESHCORE) as? MeshCoreRadio
     val reticulum get() = radio(ProtocolType.RETICULUM) as? ReticulumRadio
@@ -263,24 +267,36 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
 
     private suspend fun onPacket(p: MeshPacket) {
         media.onPacket(p)
-        val text = (p.payload as? MeshPayload.Text)?.body ?: return
+        val tp = p.payload as? MeshPayload.Text ?: return
+        val text = tp.body
         if (dao.countPacket(p.packetId, p.protocol.name) > 0) return
+        if (dao.node("${p.protocol.name}:${p.fromNodeId}")?.ignored == true) return
         val conv = conversationOf(p)
         val bridged = Regex("^\\[(MT|MC|RNS)]").containsMatchIn(text)
         dao.insertMessage(MessageEntity(packetId = p.packetId, protocol = p.protocol.name, conversation = conv, fromId = p.fromNodeId,
             fromName = p.fromShortName, text = text, timeMs = p.timestampMs, outgoing = false, status = 4, viaBridge = bridged,
-            read = conv == openConversation && foreground))
-        if (!(foreground && conv == openConversation)) notifyMessage(conv, p.fromShortName, text)
+            read = tp.emoji || (conv == openConversation && foreground), replyTo = tp.replyTo, emoji = tp.emoji))
+        if (!tp.emoji && !(foreground && conv == openConversation)) notifyMessage(conv, p.fromShortName, text)
     }
 
     private suspend fun onEvent(e: RadioEvent) {
         val proto = e.protocol.name
+        wardriver.onEvent(e)
         when (e) {
+            is RadioEvent.Waypoint -> {
+                val key = "$proto:${e.id}"
+                if (e.deleted) dao.deleteWaypoint(key) else {
+                    val isNew = dao.waypointNow(key) == null
+                    dao.upsertWaypoint(WaypointEntity(key, proto, e.id, e.name, e.description, e.lat, e.lon, e.icon, e.expireMs, e.fromId, System.currentTimeMillis()))
+                    if (isNew) notify("Waypoint: ${e.name.ifBlank { "pin" }}", "Shared by ${dao.node("$proto:${e.fromId}")?.shortName ?: e.fromId}", "wp$key".hashCode())
+                }
+            }
+            is RadioEvent.RxLog -> {}
             is RadioEvent.NodeUpdated -> saveNode(e.node)
             is RadioEvent.Position -> {
                 val key = "$proto:${e.nodeId}"
                 val old = dao.node(key)
-                dao.upsertNode((old ?: NodeEntity(key, proto, e.nodeId, e.nodeId.takeLast(4), e.nodeId)).copy(lat = e.lat, lon = e.lon, lastHeardMs = System.currentTimeMillis()))
+                dao.upsertNode((old ?: NodeEntity(key, proto, e.nodeId, e.nodeId.takeLast(4), e.nodeId)).copy(lat = e.lat, lon = e.lon, altM = e.altitudeM ?: old?.altM, lastHeardMs = System.currentTimeMillis()))
                 checkGeofences(key, old?.shortName ?: e.nodeId, e.lat, e.lon)
                 if (prefs.atakEnabled.value) dao.node(key)?.let { n -> AtakCotBridge.buildCotXml(n.toMeshNode())?.let { AtakCotBridge.sendUdp(it) } }
             }
@@ -311,7 +327,8 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         val old = dao.node(key)
         dao.upsertNode(NodeEntity(key, n.protocol.name, n.id, n.shortName, n.longName, n.latitude ?: old?.lat, n.longitude ?: old?.lon,
             n.batteryPct ?: old?.battery, n.voltage ?: old?.voltage, n.snr ?: old?.snr, n.rssi ?: old?.rssi,
-            n.hopsAway.takeIf { it >= 0 } ?: old?.hops, maxOf(n.lastHeardMs, old?.lastHeardMs ?: 0), old?.favorite ?: false))
+            n.hopsAway.takeIf { it >= 0 } ?: old?.hops, maxOf(n.lastHeardMs, old?.lastHeardMs ?: 0), old?.favorite ?: false,
+            ignored = old?.ignored ?: false, altM = old?.altM))
     }
 
     private val fenceState = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
@@ -354,15 +371,33 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         return if (parts[1] == "ch") Target(proto, parts[2].toInt(), null) else Target(proto, 0, parts[2])
     }
 
-    suspend fun sendText(conversation: String, text: String): Result<String> {
+    /** [replyTo] = packet id being answered; [emoji] = send [text] (one emoji) as a reaction to [replyTo]. */
+    suspend fun sendText(conversation: String, text: String, replyTo: String? = null, emoji: Boolean = false): Result<String> {
         val t = parse(conversation)
         val radio = radio(t.protocol) ?: return Result.failure(IllegalStateException("Connect a ${t.protocol.shortTag} radio first"))
         airtimeHold()?.let { return Result.failure(it) }
         val row = dao.insertMessage(MessageEntity(packetId = "pending-${System.nanoTime()}", protocol = t.protocol.name, conversation = conversation,
-            fromId = radio.myNodeId.value ?: "me", fromName = "You", text = text, timeMs = System.currentTimeMillis(), outgoing = true, status = 0))
-        val r = radio.sendText(t.channel, text, t.toNodeId)
+            fromId = radio.myNodeId.value ?: "me", fromName = "You", text = text, timeMs = System.currentTimeMillis(), outgoing = true, status = 0,
+            replyTo = replyTo, emoji = emoji))
+        // MeshCore has no reply or reaction fields: send a reaction as "+1 to <name>" style text instead.
+        val r = if (replyTo != null || emoji) radio.sendText(t.channel, text, t.toNodeId, replyTo, emoji) else radio.sendText(t.channel, text, t.toNodeId)
         r.onSuccess { dao.setSent(row, it, 1) }.onFailure { dao.setSent(row, "failed-$row", 3) }
         return r
+    }
+
+    /** Drops a map pin and shares it on the channel (Meshtastic). */
+    suspend fun shareWaypoint(protocol: ProtocolType, name: String, description: String, lat: Double, lon: Double, icon: Int, expireHours: Int): Result<Unit> = runCatching {
+        val r = radio(protocol) ?: error("Connect a ${protocol.shortTag} radio first")
+        airtimeHold()?.let { throw it }
+        val expire = if (expireHours <= 0) 0L else System.currentTimeMillis() + expireHours * 3_600_000L
+        val id = r.sendWaypoint(0, 0, name, description, lat, lon, icon, expire).getOrThrow()
+        dao.upsertWaypoint(WaypointEntity("${protocol.name}:$id", protocol.name, id, name, description, lat, lon, icon, expire, "me", System.currentTimeMillis()))
+    }
+
+    /** Removes a pin; if you made it, tells the mesh to remove it too. */
+    suspend fun deleteWaypoint(w: WaypointEntity): Result<Unit> = runCatching {
+        if (w.fromId == "me") radio(ProtocolType.valueOf(w.protocol))?.sendWaypoint(0, w.wid, w.name, w.description, w.lat, w.lon, w.icon, 1000L)
+        dao.deleteWaypoint(w.key)
     }
 
     private fun airtimeHold(): Throwable? = if (airtime.mustHold())

@@ -69,7 +69,7 @@ class MeshBridgeService : Service() {
      * (ForegroundServiceDidNotStartInTimeException) after a few seconds.
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        goForeground(if (BridgePrefs.isEnabled(this)) "Starting radio bridge…" else "Keeping your radios connected")
+        goForeground(if (wardriving) "Recording coverage" else if (BridgePrefs.isEnabled(this)) "Starting radio bridge…" else "Keeping your radios connected")
         val bridgeOn = BridgePrefs.isEnabled(this)
         if (!bridgeOn && !TransportRegistry.hasConnectedRadios()) {
             engine?.stop(); engine = null
@@ -80,7 +80,7 @@ class MeshBridgeService : Service() {
             val provider = TransportRegistry.provider
             if (bridgeOn && provider != null) startBridge(provider()) else {
                 engine?.stop(); engine = null
-                goForeground(if (provider == null) "Open the app to reconnect your radios" else "Connected to your radios")
+                goForeground(if (wardriving) "Recording coverage" else if (provider == null) "Open the app to reconnect your radios" else "Connected to your radios")
             }
         }
         return START_STICKY
@@ -112,13 +112,17 @@ class MeshBridgeService : Service() {
 
     private fun goForeground(text: String) {
         val notif: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(if (BridgePrefs.isEnabled(this)) "Highbridge: bridge on" else "Highbridge")
+            .setContentTitle(if (wardriving) "Highbridge: wardriving" else if (BridgePrefs.isEnabled(this)) "Highbridge: bridge on" else "Highbridge")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth) // replace with the app's own icon
             .setOngoing(true)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            // Wardriving adds the location type so GPS keeps working with the screen off.
+            val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
+                (if (wardriving) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0)
+            runCatching { startForeground(NOTIF_ID, notif, type) }
+                .onFailure { startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) }
         } else {
             startForeground(NOTIF_ID, notif)
         }
@@ -138,6 +142,9 @@ class MeshBridgeService : Service() {
         /** Called from the app when the user turns the bridge on. */
         fun enableAndStart(ctx: Context) { BridgePrefs.setEnabled(ctx, true); start(ctx) }
         fun start(ctx: Context) = ContextCompat.startForegroundService(ctx, Intent(ctx, MeshBridgeService::class.java))
+        /** Set by the wardriver; the service re-posts its notification with location access. */
+        @Volatile var wardriving = false
+        fun setWardriving(ctx: Context, on: Boolean) { wardriving = on; start(ctx) }
     }
 }
 

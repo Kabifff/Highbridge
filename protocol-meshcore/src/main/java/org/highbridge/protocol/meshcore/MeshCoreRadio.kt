@@ -91,6 +91,11 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
     private val ackToPacket = LinkedHashMap<Int, String>()
     private val syncLock = Mutex()
     private var presetForAirtime: LoRaAirtime.Params? = null
+
+    companion object {
+        const val WARDRIVE_CHANNEL = "#wardriving"
+        val wardriveChannelHash: Int by lazy { MC.channelHash(EncryptedChannel.meshCoreHashtag(WARDRIVE_CHANNEL).rawKeyBytes()) }
+    }
     @Volatile private var maxChannels = 8
 
     override suspend fun connect(address: String): Result<Unit> = runCatching {
@@ -146,6 +151,17 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
                     _incoming.emit(MeshPacket("mc-d-${System.nanoTime()}", protocol, "channel-${d.channelIdx}", "MC", null, d.channelIdx, MeshPayload.Binary(256, d.data)))
             }
             MC.RESP_CHANNEL_INFO -> {} // read by refreshChannels() from the command reply
+            MC.PUSH_TELEMETRY_RESPONSE -> MC.parseTelemetry(f)?.let { (prefix, t) ->
+                val id = _contacts.value.keys.firstOrNull { it.startsWith(prefix) } ?: prefix
+                _events.emit(RadioEvent.Telemetry(protocol, id, System.currentTimeMillis(), voltage = t.voltage, temperatureC = t.temperatureC,
+                    humidityPct = t.humidityPct, pressureHpa = t.pressureHpa))
+                _events.emit(RadioEvent.AdminReply(protocol, id, "Telemetry: " + listOfNotNull(t.voltage?.let { "%.2f V".format(it) },
+                    t.temperatureC?.let { "%.1f °C".format(it) }, t.humidityPct?.let { "%.0f%% RH".format(it) }, t.pressureHpa?.let { "%.1f hPa".format(it) }).joinToString(" · ").ifEmpty { "no sensors" }))
+            }
+            MC.PUSH_LOG_RX_DATA -> MC.parseRxLog(f)?.let {
+                _events.emit(RadioEvent.RxLog(protocol, it.snr, it.rssi, it.payloadType, it.hops, it.lastHop, it.channelHash))
+                it.lastHop?.let { hop -> _events.emit(RadioEvent.Heard(protocol, "rpt:$hop", it.snr, it.rssi, 0)) }
+            }
             MC.RESP_BATT_AND_STORAGE -> if (f.size >= 3) {
                 val mv = ByteBuffer.wrap(f, 1, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt() and 0xFFFF
                 _myId.value?.let { _events.emit(RadioEvent.Telemetry(protocol, it, System.currentTimeMillis(), voltage = mv / 1000f)) }
@@ -221,6 +237,20 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
         synchronized(channelInfo) { channelInfo.clear(); channelInfo.putAll(found) }
         _channels.value = found.values.filter { it.name.isNotBlank() }.map { MeshChannel(it.idx, it.name, protocol, isEncrypted = it.idx != 0) }
             .ifEmpty { listOf(MeshChannel(0, "Public", protocol)) }
+    }
+
+    /**
+     * Wardriving ping: "lat, lon" on the #wardriving hashtag channel (the convention MeshCore coverage
+     * maps use), joining that channel in a free slot if needed. Repeats show up as [RadioEvent.RxLog]
+     * events with [wardriveChannelHash].
+     */
+    override suspend fun sendWardrivePing(lat: Double, lon: Double): Result<String> = runCatching {
+        val ch = EncryptedChannel.meshCoreHashtag(WARDRIVE_CHANNEL)
+        val slot = synchronized(channelInfo) { channelInfo.values.firstOrNull { it.name.equals(WARDRIVE_CHANNEL, true) }?.idx }
+            ?: (freeChannelSlot() ?: error("No free channel slot for $WARDRIVE_CHANNEL. Leave a channel first.")).also { s ->
+                applyChannel(ch.copy(slotIndex = s)).getOrThrow()
+            }
+        sendText(slot, "%.5f, %.5f".format(java.util.Locale.US, lat, lon), null).getOrThrow()
     }
 
     /** Lowest empty channel slot (slot 0 is the Public channel), or null when all are in use. */
@@ -307,7 +337,27 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
         presetForAirtime = LoRaAirtime.forMeshCore(p)
     }
 
-    suspend fun advertise() = runCatching { command(MC.selfAdvert(true)) }
+    /** Announce yourself: [flood] = across the mesh; false = only to radios in direct range (zero-hop). */
+    suspend fun advertise(flood: Boolean = true) = runCatching { command(MC.selfAdvert(flood)) }
+
+    /** Asks a contact (repeater, sensor or companion that allows it) for its telemetry; replies arrive as Telemetry events. */
+    suspend fun requestTelemetry(id: String): Result<Unit> = runCatching {
+        val c = contact(id) ?: error("Unknown contact")
+        val r = command(MC.telemetryRequest(c.publicKey))
+        check(r[0].toInt() == MC.RESP_SENT || r[0].toInt() == MC.RESP_OK) { "Radio refused" }
+    }
+
+    /** Your own contact as a link the MeshCore app and Highbridge can import. */
+    fun myContactUri(): String? = selfInfo.value?.let { MC.contactUri(it.name, it.publicKey, 1) }
+
+    /** Adds a contact from a meshcore://contact/add link (it floods until a path is learned). */
+    suspend fun importContact(uri: String): Result<String> = runCatching {
+        val c = MC.parseContactUri(uri) ?: error("That isn't a MeshCore contact code")
+        val r = command(MC.updateContactPath(c, null))
+        check(r[0].toInt() == MC.RESP_OK) { "Radio refused the contact" }
+        refreshContacts()
+        c.name
+    }
     suspend fun login(id: String, password: String) = runCatching { command(MC.login(prefixOf(id), password)) }
     suspend fun requestStatus(id: String) = runCatching { command(MC.statusRequest(prefixOf(id))) }
     suspend fun remoteCli(id: String, cmd: String) = runCatching { command(MC.remoteCli(prefixOf(id).copyOf(6), cmd)) }

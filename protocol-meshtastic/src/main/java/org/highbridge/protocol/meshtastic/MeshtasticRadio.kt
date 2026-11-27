@@ -41,6 +41,7 @@ import org.meshtastic.proto.Heartbeat
 import org.meshtastic.proto.NodeInfo
 import org.meshtastic.proto.PortNum
 import org.meshtastic.proto.Position
+import org.meshtastic.proto.Waypoint
 import org.meshtastic.proto.RouteDiscovery
 import org.meshtastic.proto.Routing
 import org.meshtastic.proto.Telemetry
@@ -130,6 +131,17 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
             }
         }
         f.config?.lora?.let { loraConfig = it }
+        f.config?.let { c ->
+            val cur = _settings.value
+            _settings.value = cur.copy(device = c.device ?: cur.device, position = c.position ?: cur.position, power = c.power ?: cur.power,
+                lora = c.lora ?: cur.lora, security = c.security ?: cur.security, network = c.network ?: cur.network, display = c.display ?: cur.display)
+        }
+        f.moduleConfig?.let { m ->
+            val cur = _settings.value
+            _settings.value = cur.copy(mqtt = m.mqtt ?: cur.mqtt, telemetry = m.telemetry ?: cur.telemetry, neighborInfo = m.neighbor_info ?: cur.neighborInfo,
+                storeForward = m.store_forward ?: cur.storeForward, rangeTest = m.range_test ?: cur.rangeTest, externalNotification = m.external_notification ?: cur.externalNotification,
+                cannedMessage = m.canned_message ?: cur.cannedMessage, detectionSensor = m.detection_sensor ?: cur.detectionSensor, paxcounter = m.paxcounter ?: cur.paxcounter)
+        }
         f.log_record?.let { _events.emit(RadioEvent.Log(protocol, "${it.source}: ${it.message}")) }
         if (f.config_complete_id != null && f.config_complete_id == configId) configDone.value = true
         if (f.rebooted == true) { configDone.value = false; runCatching { link.send(ToRadio(want_config_id = configId).encode()) } }
@@ -181,7 +193,14 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
         val bytes = d.payload.toByteArray()
         when (d.portnum) {
             PortNum.TEXT_MESSAGE_APP -> _incoming.emit(MeshPacket(idOf(p.id), protocol, from, nodes[p.from]?.shortName ?: from.takeLast(4),
-                toId, p.channel, MeshPayload.Text(bytes.decodeToString())))
+                toId, p.channel, MeshPayload.Text(bytes.decodeToString(), replyTo = d.reply_id.takeIf { it != 0 }?.let { idOf(it) }, emoji = d.emoji != 0)))
+            PortNum.WAYPOINT_APP -> runCatching { Waypoint.ADAPTER.decode(bytes) }.getOrNull()?.let { w ->
+                val lat = w.latitude_i ?: return@let
+                val lon = w.longitude_i ?: return@let
+                val expire = w.expire.toLong() and 0xFFFFFFFFL
+                _events.emit(RadioEvent.Waypoint(protocol, w.id, w.name, w.description, lat * 1e-7, lon * 1e-7, w.icon, expire * 1000,
+                    from, deleted = expire in 1 until System.currentTimeMillis() / 1000))
+            }
             PortNum.POSITION_APP -> runCatching { Position.ADAPTER.decode(bytes) }.getOrNull()?.let { pos ->
                 val lat = pos.latitude_i ?: return@let
                 val lon = pos.longitude_i ?: return@let
@@ -226,11 +245,12 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
 
     private fun newPacketId(): Int = rng.nextInt(Int.MAX_VALUE - 1) + 1
 
-    private suspend fun sendData(channelIndex: Int, to: Int, port: PortNum, payload: ByteArray, wantAck: Boolean, wantResponse: Boolean = false): String {
+    private suspend fun sendData(channelIndex: Int, to: Int, port: PortNum, payload: ByteArray, wantAck: Boolean, wantResponse: Boolean = false,
+                                 replyId: Int = 0, emoji: Boolean = false): String {
         require(payload.size <= 233) { "Too large for one Meshtastic packet" }
         val id = newPacketId()
         val pkt = MtPacket(to = to, channel = channelIndex, id = id, want_ack = wantAck, hop_limit = loraConfig?.hop_limit?.takeIf { it > 0 } ?: 3,
-            decoded = Data(portnum = port, payload = payload.toByteString(), want_response = wantResponse))
+            decoded = Data(portnum = port, payload = payload.toByteString(), want_response = wantResponse, reply_id = replyId, emoji = if (emoji) 1 else 0))
         link.send(ToRadio(packet = pkt).encode())
         val preset = loraConfig?.modem_preset?.value?.let { MeshtasticModemPreset.fromCode(it) } ?: MeshtasticModemPreset.LONG_FAST
         _events.tryEmit(RadioEvent.Airtime(protocol, LoRaAirtime.timeOnAirMs(payload.size + 32, LoRaAirtime.forPreset(preset)).toLong()))
@@ -241,6 +261,25 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
 
     override suspend fun sendText(channelIndex: Int, text: String, toNodeId: String?): Result<String> = runCatching {
         sendData(channelIndex, numOf(toNodeId), PortNum.TEXT_MESSAGE_APP, text.toByteArray(), wantAck = true)
+    }
+
+    override suspend fun sendText(channelIndex: Int, text: String, toNodeId: String?, replyTo: String?, emoji: Boolean): Result<String> = runCatching {
+        sendData(channelIndex, numOf(toNodeId), PortNum.TEXT_MESSAGE_APP, text.toByteArray(), wantAck = true,
+            replyId = replyTo?.let { runCatching { numOf(it) }.getOrDefault(0) } ?: 0, emoji = emoji)
+    }
+
+    override suspend fun sendWaypoint(channelIndex: Int, id: Int, name: String, description: String, lat: Double, lon: Double, icon: Int, expireMs: Long): Result<Int> = runCatching {
+        val wid = if (id != 0) id else (newPacketId() and 0x7FFFFFFF).coerceAtLeast(1)
+        val w = Waypoint(id = wid, latitude_i = (lat * 1e7).toInt(), longitude_i = (lon * 1e7).toInt(), expire = (expireMs / 1000).toInt(),
+            name = name.take(29), description = description.take(99), icon = icon)
+        sendData(channelIndex, BROADCAST, PortNum.WAYPOINT_APP, w.encode(), wantAck = false)
+        wid
+    }
+
+    /** Position broadcast with want_ack: the radio reports an (implicit) ack once a neighbour rebroadcasts it. */
+    override suspend fun sendWardrivePing(lat: Double, lon: Double): Result<String> = runCatching {
+        val pos = Position(latitude_i = (lat * 1e7).toInt(), longitude_i = (lon * 1e7).toInt(), time = (System.currentTimeMillis() / 1000).toInt())
+        sendData(0, BROADCAST, PortNum.POSITION_APP, pos.encode(), wantAck = true)
     }
 
     override suspend fun sendBinary(channelIndex: Int, portId: Int, data: ByteArray, toNodeId: String?): Result<String> = runCatching {
@@ -261,6 +300,50 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
     suspend fun sendRangeTest(seq: Int): Result<String> = runCatching {
         sendData(0, BROADCAST, PortNum.RANGE_TEST_APP, "seq $seq".toByteArray(), wantAck = false)
     }
+
+    /** Everything the radio reported about its settings during the handshake, kept current as you change it. */
+    data class Settings(
+        val device: Config.DeviceConfig? = null, val position: Config.PositionConfig? = null, val power: Config.PowerConfig? = null,
+        val lora: Config.LoRaConfig? = null, val security: Config.SecurityConfig? = null, val network: Config.NetworkConfig? = null,
+        val display: Config.DisplayConfig? = null,
+        val mqtt: org.meshtastic.proto.ModuleConfig.MQTTConfig? = null, val telemetry: org.meshtastic.proto.ModuleConfig.TelemetryConfig? = null,
+        val neighborInfo: org.meshtastic.proto.ModuleConfig.NeighborInfoConfig? = null, val storeForward: org.meshtastic.proto.ModuleConfig.StoreForwardConfig? = null,
+        val rangeTest: org.meshtastic.proto.ModuleConfig.RangeTestConfig? = null, val externalNotification: org.meshtastic.proto.ModuleConfig.ExternalNotificationConfig? = null,
+        val cannedMessage: org.meshtastic.proto.ModuleConfig.CannedMessageConfig? = null, val detectionSensor: org.meshtastic.proto.ModuleConfig.DetectionSensorConfig? = null,
+        val paxcounter: org.meshtastic.proto.ModuleConfig.PaxcounterConfig? = null,
+    )
+    private val _settings = MutableStateFlow(Settings())
+    val settings: StateFlow<Settings> = _settings
+
+    /** Writes one config section (device, position, power, network, display, security…) in an edit transaction. */
+    suspend fun setConfig(c: Config): Result<Unit> = runCatching {
+        admin(AdminMessage(begin_edit_settings = true)); admin(AdminMessage(set_config = c)); admin(AdminMessage(commit_edit_settings = true))
+        val cur = _settings.value
+        _settings.value = cur.copy(device = c.device ?: cur.device, position = c.position ?: cur.position, power = c.power ?: cur.power,
+            lora = c.lora ?: cur.lora, security = c.security ?: cur.security, network = c.network ?: cur.network, display = c.display ?: cur.display)
+    }
+
+    /** Writes one module section (MQTT, telemetry, neighbour info, store & forward, range test…). */
+    suspend fun setModule(m: org.meshtastic.proto.ModuleConfig): Result<Unit> = runCatching {
+        admin(AdminMessage(begin_edit_settings = true)); admin(AdminMessage(set_module_config = m)); admin(AdminMessage(commit_edit_settings = true))
+        val cur = _settings.value
+        _settings.value = cur.copy(mqtt = m.mqtt ?: cur.mqtt, telemetry = m.telemetry ?: cur.telemetry, neighborInfo = m.neighbor_info ?: cur.neighborInfo,
+            storeForward = m.store_forward ?: cur.storeForward, rangeTest = m.range_test ?: cur.rangeTest, externalNotification = m.external_notification ?: cur.externalNotification,
+            cannedMessage = m.canned_message ?: cur.cannedMessage, detectionSensor = m.detection_sensor ?: cur.detectionSensor, paxcounter = m.paxcounter ?: cur.paxcounter)
+    }
+
+    /** Favourite / ignore on the radio itself, so it also affects what the radio shows and relays to you. */
+    suspend fun setFavoriteOnRadio(nodeId: String, favorite: Boolean): Result<Unit> = runCatching {
+        val n = numOf(nodeId); admin(if (favorite) AdminMessage(set_favorite_node = n) else AdminMessage(remove_favorite_node = n))
+    }
+    suspend fun setIgnoredOnRadio(nodeId: String, ignored: Boolean): Result<Unit> = runCatching {
+        val n = numOf(nodeId); admin(if (ignored) AdminMessage(set_ignored_node = n) else AdminMessage(remove_ignored_node = n))
+    }
+    suspend fun shutdown(): Result<Unit> = runCatching { admin(AdminMessage(shutdown_seconds = 2)) }
+    suspend fun nodeDbReset(): Result<Unit> = runCatching { admin(AdminMessage(nodedb_reset = true)) }
+    /** Erases all settings (keeps nothing but the firmware). [device] = also erase keys and the node database. */
+    suspend fun factoryReset(device: Boolean): Result<Unit> = runCatching { admin(if (device) AdminMessage(factory_reset_device = 1) else AdminMessage(factory_reset_config = 1)) }
+    suspend fun setCannedMessages(messages: String): Result<Unit> = runCatching { admin(AdminMessage(set_canned_message_module_messages = messages.take(200))) }
 
     private suspend fun admin(msg: AdminMessage) {
         sendData(0, myNum, PortNum.ADMIN_APP, msg.encode(), wantAck = true, wantResponse = true)

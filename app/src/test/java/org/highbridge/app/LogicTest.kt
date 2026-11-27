@@ -115,6 +115,19 @@ fun everything() = runBlocking {
     check("Board hint from Meshtastic", org.highbridge.app.flasher.UpdateChecker.boardHint("Meshtastic 2.7.15 · HELTEC_V4") == "heltec-v4")
     check("Flashable filter", org.highbridge.app.flasher.UpdateChecker.isFlashable("firmware-heltec-v4-2.7.15.abc.bin") &&
         !org.highbridge.app.flasher.UpdateChecker.isFlashable("firmware-2.7.26.json") && !org.highbridge.app.flasher.UpdateChecker.isFlashable("x.elf"))
+    // MeshCore RX log, telemetry and contact links
+    val rx = byteArrayOf(0x88.toByte(), 22, -70, (0x05 shl 2 or 0x01).toByte(), 2, 0x11, 0x2a, 0x7c, 0x01, 0x02)
+    val pr = org.highbridge.protocol.meshcore.MC.parseRxLog(rx)
+    check("RX log: SNR, RSSI, hops, last hop, channel hash", pr != null && pr.snr == 5.5f && pr.rssi == -70 && pr.hops == 2 && pr.lastHop == "2a" && pr.channelHash == 0x7c)
+    val rx2 = byteArrayOf(0x88.toByte(), 8, -90, (0x04 shl 2 or 0x01).toByte(), (0x40 or 1).toByte(), 0xAB.toByte(), 0xCD.toByte())
+    check("RX log: 2-byte path hashes", org.highbridge.protocol.meshcore.MC.parseRxLog(rx2)?.lastHop == "abcd")
+    val tel = byteArrayOf(0x8B.toByte(), 0, 1, 2, 3, 4, 5, 6, 1, 0x74, 0x01, 0x9A.toByte(), 2, 0x67, 0x00, 0xE1.toByte())
+    val tp = org.highbridge.protocol.meshcore.MC.parseTelemetry(tel)
+    check("LPP telemetry: 4.10 V, 22.5 °C", tp != null && tp.first == "010203040506" && tp.second.voltage == 4.10f && tp.second.temperatureC == 22.5f)
+    val cu = org.highbridge.protocol.meshcore.MC.contactUri("Fort Road", ByteArray(32) { it.toByte() }, 1)
+    val cback = org.highbridge.protocol.meshcore.MC.parseContactUri(cu)
+    check("MeshCore contact link round-trips", cback != null && cback.name == "Fort Road" && cback.publicKey.contentEquals(ByteArray(32) { it.toByte() }))
+    check("#wardriving channel hash is stable", org.highbridge.protocol.meshcore.MeshCoreRadio.wardriveChannelHash in 0..255)
     // Security
     val blob = EncryptedBackupManager.encrypt("keys".toByteArray(), "correct horse".toCharArray())
     check("Backup round-trips", EncryptedBackupManager.decrypt(blob, "correct horse".toCharArray()).decodeToString() == "keys")

@@ -71,8 +71,17 @@ fun ChannelsScreen(importUri: String?) {
 
     LaunchedEffect(importUri) { importUri?.let { EncryptedChannel.fromShareUri(it)?.let { c -> pendingImport = c } ?: ctx.toast("That channel link isn't valid", long = true) } }
     val scan = rememberLauncherForActivityResult(ScanContract()) { r ->
-        val c = r.contents?.let { EncryptedChannel.fromShareUri(it) }
-        if (c == null) { if (r.contents != null) ctx.toast("That QR code isn't a Highbridge channel", long = true) } else pendingImport = c
+        val text = r.contents
+        if (text != null && text.startsWith("meshcore://contact/", true)) {
+            // A MeshCore contact code: add it to the radio's contacts.
+            scope.launch {
+                val mc = app.radios.meshcore ?: run { ctx.toast("Connect your MeshCore radio to add contacts", long = true); return@launch }
+                mc.importContact(text).onSuccess { ctx.toast("Added $it to your MeshCore contacts") }.onFailure { ctx.toast(it.message, long = true) }
+            }
+            return@rememberLauncherForActivityResult
+        }
+        val c = text?.let { EncryptedChannel.fromShareUri(it) }
+        if (c == null) { if (text != null) ctx.toast("That QR code isn't a channel or contact code", long = true) } else pendingImport = c
     }
 
     LazyColumn(Modifier.fillMaxSize()) {

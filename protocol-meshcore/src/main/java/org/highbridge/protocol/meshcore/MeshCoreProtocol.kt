@@ -28,6 +28,40 @@ object MC {
     const val PUSH_MSG_WAITING = 0x83; const val PUSH_LOGIN_SUCCESS = 0x85; const val PUSH_LOGIN_FAIL = 0x86
     const val PUSH_STATUS_RESPONSE = 0x87; const val PUSH_TRACE_DATA = 0x89; const val PUSH_NEW_ADVERT = 0x8A
     const val PUSH_TELEMETRY_RESPONSE = 0x8B
+    const val PUSH_LOG_RX_DATA = 0x88
+    const val PAYLOAD_GRP_TXT = 0x05
+
+    /** One on-air packet from the RX log push: SNR/RSSI plus the parts of the raw packet we need. */
+    data class RxPacket(val snr: Float, val rssi: Int, val routeType: Int, val payloadType: Int, val hops: Int, val lastHop: String?, val channelHash: Int?)
+
+    /**
+     * PUSH_LOG_RX_DATA: [0x88][snr×4 int8][rssi int8][raw packet]. Raw packet: header (route type bits 0–1,
+     * payload type bits 2–5), 4 transport-code bytes for transport routes, a path-length byte (low 6 bits =
+     * hops, top 2 bits = hash size − 1), the path, then the payload. Group text payloads start with the channel hash.
+     */
+    fun parseRxLog(f: ByteArray): RxPacket? {
+        if (f.size < 5 || (f[0].toInt() and 0xFF) != PUSH_LOG_RX_DATA) return null
+        val snr = f[1] / 4f
+        val rssi = f[2].toInt()
+        var i = 3
+        val header = f[i++].toInt() and 0xFF
+        val route = header and 0x03
+        val ptype = (header shr 2) and 0x0F
+        if (route == 0 || route == 3) i += 4
+        if (i >= f.size) return null
+        val pl = f[i++].toInt() and 0xFF
+        val hops = pl and 0x3F
+        val hashSize = (pl shr 6) + 1
+        val pathBytes = hops * hashSize
+        if (i + pathBytes > f.size) return null
+        val last = if (hops > 0) f.copyOfRange(i + pathBytes - hashSize, i + pathBytes).joinToString("") { "%02x".format(it) } else null
+        i += pathBytes
+        val ch = if (ptype == PAYLOAD_GRP_TXT && i < f.size) f[i].toInt() and 0xFF else null
+        return RxPacket(snr, rssi, route, ptype, hops, last, ch)
+    }
+
+    /** The 1-byte channel hash MeshCore puts on group packets: first byte of SHA-256 of the 16-byte secret. */
+    fun channelHash(secret: ByteArray): Int = java.security.MessageDigest.getInstance("SHA-256").digest(secret)[0].toInt() and 0xFF
 
     const val TXT_PLAIN = 0; const val TXT_CLI_DATA = 1; const val TXT_SIGNED_PLAIN = 2
     const val PUB_KEY_SIZE = 32; const val MAX_PATH_SIZE = 64; const val MAX_TEXT_LEN = 160
@@ -110,6 +144,44 @@ object MC {
         val n = ByteArray(32); c.name.toByteArray().let { it.copyInto(n, 0, 0, minOf(31, it.size)) }; b.put(n)
         b.putInt(c.lastAdvert).putInt((c.lat * 1e6).toInt()).putInt((c.lon * 1e6).toInt())
         return b.array()
+    }
+
+    /** MeshCore app contact link: meshcore://contact/add?name=…&public_key=<64 hex>&type=<1 chat, 2 repeater, 3 room, 4 sensor>. */
+    fun contactUri(name: String, publicKey: ByteArray, type: Int): String =
+        "meshcore://contact/add?name=" + java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20") + "&public_key=" + hex(publicKey) + "&type=$type"
+
+    fun parseContactUri(uri: String): Contact? = runCatching {
+        if (!uri.startsWith("meshcore://contact/add", true)) return null
+        val q = uri.substringAfter('?', "").split('&').mapNotNull { kv -> kv.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to java.net.URLDecoder.decode(it[1], "UTF-8") } }.toMap()
+        val key = unhex(q["public_key"] ?: return null).takeIf { it.size == 32 } ?: return null
+        val name = q["name"]?.take(31) ?: return null
+        Contact(key, q["type"]?.toIntOrNull()?.coerceIn(1, 4) ?: 1, 0, 0xFF, ByteArray(MAX_PATH_SIZE), name, (System.currentTimeMillis() / 1000).toInt(), 0.0, 0.0)
+    }.getOrNull()
+
+    /**
+     * Cayenne LPP from a telemetry reply: [0x8B][reserved][6-byte key prefix][channel, type, value]…
+     * Returns battery volts, temperature °C, humidity %, pressure hPa where present.
+     */
+    data class Lpp(val voltage: Float? = null, val temperatureC: Float? = null, val humidityPct: Float? = null, val pressureHpa: Float? = null)
+    fun parseTelemetry(f: ByteArray): Pair<String, Lpp>? {
+        if (f.size < 8) return null
+        val prefix = hex(f.copyOfRange(2, 8))
+        var out = Lpp(); var i = 8
+        fun u16(o: Int) = ((f[o].toInt() and 0xFF) shl 8) or (f[o + 1].toInt() and 0xFF)
+        while (i + 2 <= f.size) {
+            val type = f[i + 1].toInt() and 0xFF; val d = i + 2
+            val len = when (type) { 0x74, 0x02, 0x67 -> 2; 0x68 -> 1; 0x73 -> 2; 0x88 -> 9; 0x00, 0x01 -> 1; 0x65 -> 2; 0x71 -> 6; 0x86 -> 6; else -> return prefix to out }
+            if (d + len > f.size) break
+            out = when (type) {
+                0x74 -> out.copy(voltage = u16(d) / 100f)
+                0x67 -> out.copy(temperatureC = u16(d).toShort() / 10f)
+                0x68 -> out.copy(humidityPct = (f[d].toInt() and 0xFF) / 2f)
+                0x73 -> out.copy(pressureHpa = u16(d) / 10f)
+                else -> out
+            }
+            i = d + len
+        }
+        return prefix to out
     }
 
     fun utf8Cap(s: String, max: Int): ByteArray {

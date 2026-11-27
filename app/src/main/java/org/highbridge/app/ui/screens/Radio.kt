@@ -47,6 +47,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -82,6 +84,7 @@ import java.util.Locale
 /** Region picker for every LoRa band, plus radio settings for each connected protocol. */
 @Composable
 fun RadioScreen() {
+    val navRadio = LocalNav.current
     val app = HighbridgeApp.instance
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -181,6 +184,31 @@ fun RadioScreen() {
                     Button(enabled = radios.containsKey(ProtocolType.MESHCORE) && problems.isEmpty(), onClick = {
                         scope.launch { app.radios.meshcore?.applyPreset(mcPreset, mcPower)?.let { ctx.toast(long = true, message = it.exceptionOrNull()?.message ?: "MeshCore radio updated") } }
                     }) { Text("Apply to MeshCore radio") }
+                }
+                if (radios.containsKey(ProtocolType.MESHTASTIC)) HbCard {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHTASTIC); Text("All Meshtastic settings", fontWeight = FontWeight.Bold) }
+                    Text("Role, position, power, MQTT, telemetry, modules, security, restart and reset.", fontSize = 12.sp)
+                    TextButton(onClick = { navRadio.navigate("mtsettings") }) { Text("Open settings") }
+                }
+                if (radios.containsKey(ProtocolType.MESHCORE)) HbCard {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHCORE); Text("Announce and share", fontWeight = FontWeight.Bold) }
+                    Text("An advert lets others add you as a contact. Zero-hop reaches radios in direct range only; flood goes across the mesh.", fontSize = 12.sp)
+                    var showQr by remember { mutableStateOf(false) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { scope.launch { ctx.toast(app.radios.meshcore?.advertise(false)?.exceptionOrNull()?.message ?: "Zero-hop advert sent") } }) { Text("Zero-hop") }
+                        OutlinedButton(onClick = { scope.launch { ctx.toast(app.radios.meshcore?.advertise(true)?.exceptionOrNull()?.message ?: "Flood advert sent") } }) { Text("Flood") }
+                        TextButton(onClick = { showQr = true }) { Text("My QR") }
+                    }
+                    val link = app.radios.meshcore?.myContactUri()
+                    if (showQr && link != null) androidx.compose.material3.AlertDialog(onDismissRequest = { showQr = false },
+                        title = { Text("Your MeshCore contact") },
+                        text = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val bmp = remember(link) { com.journeyapps.barcodescanner.BarcodeEncoder().encodeBitmap(link, com.google.zxing.BarcodeFormat.QR_CODE, 640, 640) }
+                            androidx.compose.foundation.Image(bmp.asImageBitmap(), "Contact QR code", Modifier.size(240.dp))
+                            Text("Others scan this in Highbridge (Channels › Scan) or the MeshCore app to add you.", fontSize = 12.sp)
+                        } },
+                        confirmButton = { TextButton(onClick = { showQr = false }) { Text("Done") } },
+                        dismissButton = { TextButton(onClick = { ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, link), "Share contact")) }) { Text("Share link") } })
                 }
                 HbCard {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.RETICULUM); Text("RNode (Reticulum)", fontWeight = FontWeight.Bold) }

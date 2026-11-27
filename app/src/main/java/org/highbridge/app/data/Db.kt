@@ -3,6 +3,7 @@
 package org.highbridge.app.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -35,6 +36,10 @@ data class MessageEntity(
     val snr: Float? = null,
     val viaBridge: Boolean = false,
     val read: Boolean = outgoing,
+    /** Packet id this message answers (a reply), or the message a reaction belongs to. */
+    val replyTo: String? = null,
+    /** A tapback reaction: [text] is one emoji. */
+    @ColumnInfo(defaultValue = "0") val emoji: Boolean = false,
 )
 
 @Entity(tableName = "nodes")
@@ -53,7 +58,32 @@ data class NodeEntity(
     val hops: Int? = null,
     val lastHeardMs: Long = 0,
     val favorite: Boolean = false,
+    /** Hidden from lists and maps, and its messages are not shown. */
+    @ColumnInfo(defaultValue = "0") val ignored: Boolean = false,
+    val altM: Int? = null,
 )
+
+/** A shared map pin (Meshtastic waypoint), or one you dropped. */
+@Entity(tableName = "waypoints")
+data class WaypointEntity(
+    @PrimaryKey val key: String, // PROTOCOL:id
+    val protocol: String, val wid: Int, val name: String, val description: String,
+    val lat: Double, val lon: Double, val icon: Int, val expireMs: Long, val fromId: String, val timeMs: Long,
+)
+
+/**
+ * One wardriving observation. kind 0 = heard something here (passive), 1 = our ping (heard = how many
+ * nodes or repeaters picked it up), 2 = nothing heard for a while here (dead spot).
+ */
+@Entity(tableName = "wardrive_samples", indices = [Index("session"), Index("uploaded")])
+data class WardriveSampleEntity(
+    @PrimaryKey(autoGenerate = true) val rowId: Long = 0,
+    val session: Long, val protocol: String, val lat: Double, val lon: Double, val timeMs: Long,
+    val kind: Int, val snr: Float?, val rssi: Int?, val heard: Int, val source: String?,
+    @ColumnInfo(defaultValue = "0") val uploaded: Boolean = false,
+)
+
+data class WardriveSession(val session: Long, val protocol: String, val samples: Int, val firstMs: Long, val lastMs: Long, val pending: Int)
 
 @Entity(tableName = "telemetry", indices = [Index("nodeKey")])
 data class TelemetryEntity(
@@ -139,6 +169,27 @@ interface MeshDao {
     @Query("SELECT * FROM geofences WHERE active = 1") suspend fun activeGeofences(): List<GeofenceEntity>
     @Query("DELETE FROM geofences WHERE rowId = :id") suspend fun deleteGeofence(id: Long)
 
+    @Upsert suspend fun upsertWaypoint(w: WaypointEntity)
+    @Query("SELECT * FROM waypoints WHERE expireMs = 0 OR expireMs > :now ORDER BY timeMs DESC") fun waypoints(now: Long): Flow<List<WaypointEntity>>
+    @Query("DELETE FROM waypoints WHERE `key` = :key") suspend fun deleteWaypoint(key: String)
+    @Query("SELECT * FROM waypoints WHERE `key` = :key") suspend fun waypointNow(key: String): WaypointEntity?
+
+    @Insert suspend fun insertWardrive(s: WardriveSampleEntity): Long
+    @Query("SELECT * FROM wardrive_samples WHERE session = :session ORDER BY timeMs ASC") fun wardriveSession(session: Long): Flow<List<WardriveSampleEntity>>
+    @Query("SELECT * FROM wardrive_samples WHERE protocol = :protocol ORDER BY timeMs DESC LIMIT 5000") fun wardriveAll(protocol: String): Flow<List<WardriveSampleEntity>>
+    @Query("SELECT * FROM wardrive_samples ORDER BY timeMs DESC LIMIT 5000") fun wardriveAllProtocols(): Flow<List<WardriveSampleEntity>>
+    @Query("SELECT * FROM wardrive_samples WHERE uploaded = 0 AND protocol = :protocol ORDER BY timeMs ASC LIMIT :n") suspend fun wardrivePending(protocol: String, n: Int): List<WardriveSampleEntity>
+    @Query("UPDATE wardrive_samples SET uploaded = 1 WHERE rowId IN (:ids)") suspend fun markUploaded(ids: List<Long>)
+    @Query("UPDATE wardrive_samples SET heard = :heard, snr = :snr WHERE rowId = :rowId") suspend fun markPing(rowId: Long, heard: Int, snr: Float?)
+    @Query("""SELECT session, protocol, COUNT(*) AS samples, MIN(timeMs) AS firstMs, MAX(timeMs) AS lastMs,
+              SUM(CASE WHEN uploaded = 0 THEN 1 ELSE 0 END) AS pending FROM wardrive_samples GROUP BY session ORDER BY session DESC""")
+    fun wardriveSessions(): Flow<List<WardriveSession>>
+    @Query("DELETE FROM wardrive_samples WHERE session = :session") suspend fun deleteWardriveSession(session: Long)
+
+    @Query("UPDATE nodes SET ignored = :ignored WHERE `key` = :key") suspend fun setIgnored(key: String, ignored: Boolean)
+    @Query("SELECT * FROM messages WHERE text LIKE '%' || :q || '%' AND emoji = 0 ORDER BY timeMs DESC LIMIT 200") suspend fun searchMessages(q: String): List<MessageEntity>
+    @Query("DELETE FROM messages WHERE rowId = :rowId") suspend fun deleteMessage(rowId: Long)
+
     @Upsert suspend fun upsertChannel(c: ChannelEntity)
     @Query("SELECT * FROM channels ORDER BY createdMs DESC") fun channels(): Flow<List<ChannelEntity>>
     @Query("SELECT * FROM channels") suspend fun channelsNow(): List<ChannelEntity>
@@ -146,11 +197,27 @@ interface MeshDao {
 }
 
 @Database(entities = [MessageEntity::class, NodeEntity::class, TelemetryEntity::class, RangeTestEntity::class, TrackPointEntity::class,
-    RouteEntity::class, GeofenceEntity::class, ChannelEntity::class], version = 1, exportSchema = true)
+    RouteEntity::class, GeofenceEntity::class, ChannelEntity::class, WaypointEntity::class, WardriveSampleEntity::class], version = 2, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun dao(): MeshDao
     companion object {
         const val NAME = "highbridge.db"
-        fun build(ctx: Context) = Room.databaseBuilder(ctx, AppDatabase::class.java, NAME).fallbackToDestructiveMigration().build()
+        /** 1 → 2: replies and reactions, ignored nodes and altitude, shared waypoints, wardriving. */
+        val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `messages` ADD COLUMN `replyTo` TEXT")
+                db.execSQL("ALTER TABLE `messages` ADD COLUMN `emoji` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `nodes` ADD COLUMN `ignored` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `nodes` ADD COLUMN `altM` INTEGER")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `waypoints` (`key` TEXT NOT NULL, `protocol` TEXT NOT NULL, `wid` INTEGER NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `icon` INTEGER NOT NULL, `expireMs` INTEGER NOT NULL, `fromId` TEXT NOT NULL, `timeMs` INTEGER NOT NULL, PRIMARY KEY(`key`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `wardrive_samples` (`rowId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `session` INTEGER NOT NULL, `protocol` TEXT NOT NULL, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `timeMs` INTEGER NOT NULL, `kind` INTEGER NOT NULL, `snr` REAL, `rssi` INTEGER, `heard` INTEGER NOT NULL, `source` TEXT, `uploaded` INTEGER NOT NULL DEFAULT 0)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_wardrive_samples_session` ON `wardrive_samples` (`session`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_wardrive_samples_uploaded` ON `wardrive_samples` (`uploaded`)")
+            }
+        }
+
+        // Never wipe people's messages on an app update: every schema change gets a migration.
+        fun build(ctx: Context) = Room.databaseBuilder(ctx, AppDatabase::class.java, NAME)
+            .addMigrations(MIGRATION_1_2).fallbackToDestructiveMigrationOnDowngrade().build()
     }
 }

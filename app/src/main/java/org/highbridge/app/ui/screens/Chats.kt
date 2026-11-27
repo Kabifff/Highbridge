@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -42,6 +44,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Badge
 import androidx.compose.material3.FloatingActionButton
@@ -118,6 +121,7 @@ fun ChatsScreen(openDrawer: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         HbHeader("Highbridge", "West 7th · ${radios.size} radio${if (radios.size == 1) "" else "s"} connected", skyline = true, actions = {
+            IconButton(onClick = { nav.navigate("search") }) { Icon(Icons.Filled.Search, "Search messages") }
             IconButton(onClick = openDrawer) { Icon(Icons.Filled.Menu, "Menu") }
         })
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -201,13 +205,19 @@ fun ChatScreen(conversation: String) {
     val chName = radio?.channels?.collectAsState()?.value?.firstOrNull { it.index == target.channel }?.name
     val title = conversationTitle(conversation, nodes.associate { it.key to it.longName }, if (chName != null) mapOf(conversation to chName) else emptyMap())
     var text by remember { mutableStateOf("") }
+    var replyTo by remember { mutableStateOf<MessageEntity?>(null) }
+    var actionsFor by remember { mutableStateOf<MessageEntity?>(null) }
+    var quick by remember { mutableStateOf(false) }
+    val shown = remember(msgs) { msgs.filter { !it.emoji } }
+    val reactions = remember(msgs) { msgs.filter { it.emoji && it.replyTo != null }.groupBy { it.replyTo!! } }
+    val byPacket = remember(msgs) { msgs.associateBy { it.packetId } }
     var recording by remember { mutableStateOf(false) }
     var level by remember { mutableStateOf(0f) }
     val progress = remember { mutableStateMapOf<Int, Pair<Int, Int>>() }
     val list = rememberLazyListState()
 
     DisposableEffect(conversation) { app.radios.openConversation = conversation; onDispose { app.radios.openConversation = null } }
-    LaunchedEffect(msgs.size) { app.db.dao().markRead(conversation); if (msgs.isNotEmpty()) list.animateScrollToItem(msgs.lastIndex) }
+    LaunchedEffect(shown.size) { app.db.dao().markRead(conversation); if (shown.isNotEmpty()) list.animateScrollToItem(shown.size) }
     LaunchedEffect(Unit) { app.radios.media.progress.collect { progress[it.transferId] = it.done to it.total } }
 
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
@@ -234,9 +244,23 @@ fun ChatScreen(conversation: String) {
         })
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { org.highbridge.app.ui.Gap(8) }
-            items(msgs, key = { it.rowId }) { m -> MessageBubble(m, progress) }
+            items(shown, key = { it.rowId }) { m ->
+                MessageBubble(m, progress, reactions[m.packetId].orEmpty(), m.replyTo?.let { byPacket[it] }) { actionsFor = m }
+            }
+        }
+        replyTo?.let { q ->
+            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp, 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Replying to ${q.fromName}: ${q.text}", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp)
+                TextButton(onClick = { replyTo = null }) { Text("Cancel") }
+            }
+        }
+        if (quick) Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(QUICK_REPLIES) { q -> androidx.compose.material3.AssistChip({ quick = false; scope.launch { app.radios.sendText(conversation, q).onFailure { ctx.toast(it.message, long = true) } } }, { Text(q) }) }
+            }
         }
         Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            IconButton(onClick = { quick = !quick }, enabled = radio != null) { Icon(Icons.Filled.Bolt, "Quick replies") }
             IconButton(onClick = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, enabled = radio != null && target.protocol != ProtocolType.RETICULUM) {
                 Icon(Icons.Filled.Image, "Send a photo")
             }
@@ -259,16 +283,40 @@ fun ChatScreen(conversation: String) {
             } else {
                 IconButton(onClick = {
                     val t = text.trim(); text = ""
-                    scope.launch { app.radios.sendText(conversation, t).onFailure { ctx.toast(it.message, long = true) } }
+                    val rt = replyTo?.packetId; replyTo = null
+                    scope.launch { app.radios.sendText(conversation, t, replyTo = rt).onFailure { ctx.toast(it.message, long = true) } }
                 }, enabled = radio != null) { Icon(Icons.AutoMirrored.Filled.Send, "Send") }
             }
         }
         if (recording) LinearProgressIndicator(progress = { level }, Modifier.fillMaxWidth())
     }
+    actionsFor?.let { m ->
+        val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+        androidx.compose.material3.AlertDialog(onDismissRequest = { actionsFor = null },
+            title = { Text(m.text, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 15.sp) },
+            text = { Column {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    REACTIONS.forEach { e -> TextButton(onClick = {
+                        actionsFor = null
+                        scope.launch { app.radios.sendText(conversation, e, replyTo = m.packetId, emoji = true).onFailure { ctx.toast(it.message, long = true) } }
+                    }, enabled = radio != null && !m.packetId.startsWith("pending")) { Text(e, fontSize = 20.sp) } }
+                }
+                TextButton(onClick = { replyTo = m; actionsFor = null }) { Text("Reply") }
+                TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(m.text)); actionsFor = null }) { Text("Copy text") }
+                if (m.status == 3) TextButton(onClick = { actionsFor = null; scope.launch {
+                    app.db.dao().deleteMessage(m.rowId); app.radios.sendText(conversation, m.text, m.replyTo).onFailure { ctx.toast(it.message, long = true) } } }) { Text("Send again") }
+                TextButton(onClick = { actionsFor = null; scope.launch { app.db.dao().deleteMessage(m.rowId) } }) { Text("Delete from this phone") }
+            } },
+            confirmButton = { TextButton(onClick = { actionsFor = null }) { Text("Close") } })
+    }
 }
 
+private val REACTIONS = listOf("👍", "❤️", "😂", "😮", "🙏", "✅")
+private val QUICK_REPLIES = listOf("OK", "Copy that", "On my way", "Where are you?", "Running late", "Need help", "All good here", "Signing off")
+
 @Composable
-private fun MessageBubble(m: MessageEntity, progress: Map<Int, Pair<Int, Int>>) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun MessageBubble(m: MessageEntity, progress: Map<Int, Pair<Int, Int>>, reactions: List<MessageEntity>, quoted: MessageEntity?, onLongPress: () -> Unit) {
     val mine = m.outgoing
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
@@ -278,7 +326,12 @@ private fun MessageBubble(m: MessageEntity, progress: Map<Int, Pair<Int, Int>>) 
             m.snr?.let { Text("SNR %.1f".format(it), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         Column(Modifier.widthIn(max = 300.dp).clip(RoundedCornerShape(if (mine) 12.dp else 4.dp, if (mine) 4.dp else 12.dp, 12.dp, 12.dp))
-            .background(if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface).padding(10.dp)) {
+            .background(if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+            .combinedClickable(onClick = {}, onLongClick = onLongPress).padding(10.dp)) {
+            quoted?.let { q ->
+                Text("↪ ${q.fromName}: ${q.text}", Modifier.padding(bottom = 4.dp), fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             when (m.mediaType) {
                 "IMAGE_WEBP" -> m.mediaPath?.let { path ->
                     val bmp = remember(path) { BitmapFactory.decodeFile(path) }
@@ -293,6 +346,12 @@ private fun MessageBubble(m: MessageEntity, progress: Map<Int, Pair<Int, Int>>) 
             }
             if (mine && m.packetId.startsWith("media-out-")) m.packetId.removePrefix("media-out-").toIntOrNull()?.let { id ->
                 progress[id]?.let { (d, t) -> if (d < t) { LinearProgressIndicator(progress = { d / t.toFloat() }, Modifier.fillMaxWidth().padding(top = 6.dp)); Text("Sending $d of $t chunks", fontSize = 11.sp) } }
+            }
+        }
+        if (reactions.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            reactions.groupBy { it.text }.forEach { (e, who) ->
+                Text("$e ${if (who.size > 1) who.size else ""}".trim(), Modifier.clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(6.dp, 2.dp), fontSize = 13.sp)
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {

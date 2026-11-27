@@ -201,6 +201,9 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                         composable("updates") { UpdatesScreen() }
                         composable("settings") { SettingsScreen() }
                         composable("licenses") { LicensesScreen() }
+                        composable("mtsettings") { org.highbridge.app.ui.screens.MeshtasticSettingsScreen() }
+                        composable("wardrive") { org.highbridge.app.ui.screens.WardriveScreen() }
+                        composable("search") { org.highbridge.app.ui.screens.SearchScreen() }
                     }
                     // After NavHost, so a notification or link that opens the app never navigates before the graph exists.
                     LaunchedEffect(pendingRoute) { pendingRoute?.let { runCatching { nav.navigate(it) }; consumed() } }
