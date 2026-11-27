@@ -153,6 +153,8 @@ private fun DirectPicker(query: String, onQuery: (String) -> Unit, onPick: (Stri
     }.sortedByDescending { it.lastHeardMs }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         OutlinedTextField(query, onQuery, Modifier.fillMaxWidth(), label = { Text(tr("Search nodes")) }, singleLine = true)
+        if (ProtocolType.APRS in radios && org.highbridge.app.aprs.AprsFormat.isCallsign(query.trim()))
+            TextButton(onClick = { onPick("APRS:dm:${query.trim().uppercase()}") }) { Text("Message ${query.trim().uppercase()} on APRS") }
         if (shown.isEmpty()) Text(if (nodes.isEmpty()) "No nodes heard yet. Leave your radio on for a few minutes." else "No match.",
             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn(Modifier.heightIn(max = 340.dp)) {

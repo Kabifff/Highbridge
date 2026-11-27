@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
@@ -150,6 +151,7 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                     NavigationDrawerItem(label = { Text(tr("Connect a radio")) }, icon = { Icon(Icons.Filled.Bluetooth, null) }, selected = false, onClick = { go("connect") })
                     NavigationDrawerItem(label = { Text(tr("Channels & QR codes")) }, icon = { Icon(Icons.Filled.Key, null) }, selected = false, onClick = { go("channels") })
                     NavigationDrawerItem(label = { Text(tr("Field tools")) }, icon = { Icon(Icons.Filled.Build, null) }, selected = false, onClick = { go("tools") })
+                    NavigationDrawerItem(label = { Text("APRS") }, icon = { Icon(Icons.Filled.CellTower, null) }, selected = false, onClick = { go("aprs") })
                     NavigationDrawerItem(label = { Text(tr("USB terminal & flashing")) }, icon = { Icon(Icons.Filled.Usb, null) }, selected = false, onClick = { go("usb") })
                     NavigationDrawerItem(label = { Text(tr("Firmware updates")) }, icon = { Icon(Icons.Filled.SettingsInputAntenna, null) }, selected = false, onClick = { go("updates") })
                     NavigationDrawerItem(label = { Text(tr("Settings")) }, icon = { Icon(Icons.Filled.Settings, null) }, selected = false, onClick = { go("settings") })
@@ -211,6 +213,9 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                         composable("discover") { org.highbridge.app.ui.screens.DiscoverScreen() }
                         composable("predict") { org.highbridge.app.ui.screens.CoveragePredictScreen() }
                         composable("ar") { org.highbridge.app.ui.screens.ArScreen() }
+                        composable("aprs") { org.highbridge.app.ui.screens.AprsScreen() }
+                        composable("callsign") { org.highbridge.app.ui.screens.CallsignScreen() }
+                        composable("callsign/{c}") { b -> org.highbridge.app.ui.screens.CallsignScreen(Uri.decode(b.arguments?.getString("c") ?: "")) }
                     }
                     // After NavHost, so a notification or link that opens the app never navigates before the graph exists.
                     LaunchedEffect(pendingRoute) { pendingRoute?.let { runCatching { nav.navigate(it) }; consumed() } }

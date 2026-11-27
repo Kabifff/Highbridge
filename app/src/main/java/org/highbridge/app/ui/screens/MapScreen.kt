@@ -139,7 +139,7 @@ fun MapScreen() {
             }
         })
         LazyRow(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(supportedProtocols) { p -> FilterChip(p in filter, { filter = if (p in filter) filter - p else filter + p }, { Text(p.shortTag) }) }
+            items(shownProtocols) { p -> FilterChip(p in filter, { filter = if (p in filter) filter - p else filter + p }, { Text(p.shortTag) }) }
             item { FilterChip(rings, { rings = !rings }, { Text(tr("Signal rings")) }) }
             item { FilterChip(heatmap, { heatmap = !heatmap }, { Text(tr("Range test")) }) }
             item { FilterChip(hideStale, { hideStale = !hideStale }, { Text(tr("Hide stale")) }) }
@@ -191,6 +191,7 @@ fun MapScreen() {
             Row(Modifier.align(Alignment.BottomStart).padding(10.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp)).padding(8.dp, 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("● Meshtastic", color = StPaulMeshPalette.Meshtastic); Text("● MeshCore", color = StPaulMeshPalette.MeshCore); Text("● Reticulum", color = StPaulMeshPalette.Reticulum)
+                if (nodes.any { it.protocol == "APRS" }) Text("● APRS", color = StPaulMeshPalette.Aprs)
             }
             Text(if (style in setOf("SATELLITE", "USGS_TOPO", "HYBRID", "TERRAIN", "HYDRO")) "USGS The National Map" else "© OpenStreetMap contributors",
                 Modifier.align(Alignment.BottomEnd).padding(6.dp), style = MaterialTheme.typography.labelSmall)

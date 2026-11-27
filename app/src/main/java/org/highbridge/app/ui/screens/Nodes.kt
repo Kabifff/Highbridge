@@ -81,7 +81,7 @@ fun NodesScreen() {
         HbHeader(tr("Nodes"), "${shown.size} heard in the last ${stale / 60} h")
         LazyRow(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item { FilterChip(filter == null, { filter = null }, { Text(tr("All")) }) }
-            items(supportedProtocols) { p -> FilterChip(filter == p, { filter = p }, { Text("${p.shortTag} ${nodes.count { it.protocol == p.name }}") }) }
+            items(shownProtocols) { p -> FilterChip(filter == p, { filter = p }, { Text("${p.shortTag} ${nodes.count { it.protocol == p.name }}") }) }
             item { FilterChip(showStale, { showStale = !showStale }, { Text(tr("Include stale")) }) }
             item { FilterChip(favOnly, { favOnly = !favOnly }, { Text(tr("Favorites")) }) }
             if (nodes.any { it.ignored }) item { FilterChip(showIgnored, { showIgnored = !showIgnored }, { Text(tr("Ignored")) }) }
@@ -135,7 +135,7 @@ fun NodeDetailScreen(key: String) {
                 n.snr?.let { Text("SNR %.1f dB · RSSI ${n.rssi ?: "?"} dBm".format(it)) }
                 n.hops?.let { Text(if (it <= 0) "Heard directly" else "$it hops away") }
                 if (n.lat != null && n.lon != null) {
-                    Text(tr("Position %.5f, %.5f").format(n.lat, n.lon))
+                    Text(tr("Position %.5f, %.5f").format(n.lat, n.lon) + " · " + Geo.maidenhead(n.lat, n.lon))
                     me?.let { Text("${Geo.formatDistance(Geo.distanceM(it.first, it.second, n.lat, n.lon), metric)} · ${Geo.compassPoint(Geo.bearingDeg(it.first, it.second, n.lat, n.lon))}") }
                 }
                 n.altM?.let { Text("Altitude ${if (metric) "$it m" else "${(it * 3.281).toInt()} ft"}") }
@@ -143,6 +143,7 @@ fun NodeDetailScreen(key: String) {
                 elevationLine(n.altM?.toDouble(), myAlt, metric)?.let { Text(it) }
                 (n.battery ?: n.voltage)?.let { Text("Battery ${n.battery?.let { "$it%" } ?: ""} ${n.voltage?.let { "%.2f V".format(it) } ?: ""}") }
             }
+            if (proto == ProtocolType.APRS) AprsStationDetails(n.id)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(tr("Ignore this node"))
@@ -152,7 +153,7 @@ fun NodeDetailScreen(key: String) {
             }
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { nav.navigate("chat/${Uri.encode("${n.protocol}:dm:${n.id}")}") }) { Text(tr("Message")) }
-                OutlinedButton(onClick = { scope.launch { val r = app.radios.radio(proto)?.requestTraceroute(n.id); ctx.toast(r?.exceptionOrNull()?.message ?: "Traceroute sent") } }) { Text("Traceroute") }
+                if (proto != ProtocolType.APRS) OutlinedButton(onClick = { scope.launch { val r = app.radios.radio(proto)?.requestTraceroute(n.id); ctx.toast(r?.exceptionOrNull()?.message ?: "Traceroute sent") } }) { Text("Traceroute") }
                 if (proto == ProtocolType.MESHTASTIC) OutlinedButton(onClick = { nav.navigate("mtremote/${Uri.encode(n.id)}") }) { Text(tr("Admin")) }
                 if (proto == ProtocolType.MESHCORE) OutlinedButton(onClick = {
                     scope.launch { ctx.toast(app.radios.meshcore?.requestTelemetry(n.id)?.exceptionOrNull()?.message ?: "Asked for telemetry; the answer shows below when it arrives") }

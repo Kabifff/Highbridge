@@ -97,6 +97,7 @@ fun ChannelsScreen(importUri: String?) {
                         ProtocolType.MESHTASTIC -> "256-bit AES key, slots 1–7 (slot 0 is your primary channel)"
                         ProtocolType.MESHCORE -> "128-bit key (the most MeshCore firmware accepts)"
                         ProtocolType.RETICULUM -> "512-bit key for a Reticulum group"
+                        ProtocolType.APRS -> "APRS has no private channels"
                     }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(tr("Name")) }, singleLine = true)
                     OutlinedTextField(slot, { slot = it.filter(Char::isDigit) }, Modifier.fillMaxWidth(), label = { Text(tr("Slot (empty = next free slot)")) }, singleLine = true)

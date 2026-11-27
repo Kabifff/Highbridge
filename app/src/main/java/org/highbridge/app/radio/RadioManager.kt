@@ -112,12 +112,14 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         private set
 
     init {
-        TransportRegistry.provider = { _radios.value }
-        TransportRegistry.hasConnectedRadios = { _radios.value.isNotEmpty() }
+        // APRS is ham radio: never offered to the bridge, so unlicensed mesh traffic can't reach it that way.
+        TransportRegistry.provider = { _radios.value - ProtocolType.APRS }
+        TransportRegistry.hasConnectedRadios = { (_radios.value - ProtocolType.APRS).isNotEmpty() }
         TransportRegistry.reconnect = { reconnectRemembered() }
         createNotificationChannels()
         scope.launch { media.completed.collect { onMediaComplete(it) } }
         scope.launch { prefs.region.collect { airtime.region = it } }
+        scope.launch { stationIdLoop() }
         // Keep the home-screen widget current.
         scope.launch {
             kotlinx.coroutines.flow.combine(_radios, dao.unreadCount()) { r, u -> r.keys.map { it.shortTag } to u }
@@ -132,6 +134,8 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     val meshtastic get() = radio(ProtocolType.MESHTASTIC) as? MeshtasticRadio
     val meshcore get() = radio(ProtocolType.MESHCORE) as? MeshCoreRadio
     val reticulum get() = radio(ProtocolType.RETICULUM) as? ReticulumRadio
+    val aprs get() = radio(ProtocolType.APRS) as? org.highbridge.app.aprs.AprsRadio
+    val aprsGateway = org.highbridge.app.aprs.AprsGateway({ prefs.aprsGatewayRegs.value }, { prefs.setAprsGatewayRegs(it); aprs?.refreshFilter() })
 
     // ------------------------------------------------------------------ connecting
 
@@ -142,6 +146,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
             ProtocolType.MESHTASTIC -> MeshtasticRadio(MeshtasticBleLink(ctx, device))
             ProtocolType.MESHCORE -> MeshCoreRadio(MeshCoreLink(BleNusStream(ctx, device), isSerial = false))
             ProtocolType.RETICULUM -> reticulumRadio(BleNusStream(ctx, device))
+            ProtocolType.APRS -> aprsRadio(org.highbridge.core.protocol.link.BleKissStream(ctx, device), device.name ?: device.address)
         } }.getOrElse { return Result.failure(it) }
         return attach(radio).onSuccess { prefs.rememberDevice("BLE|${protocol.name}|${device.address}") }
     }
@@ -156,11 +161,50 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
             ProtocolType.MESHTASTIC -> MeshtasticRadio(MeshtasticSerialLink(link))
             ProtocolType.MESHCORE -> MeshCoreRadio(MeshCoreLink(link, isSerial = true))
             ProtocolType.RETICULUM -> reticulumRadio(link)
+            ProtocolType.APRS -> error("APRS TNCs are connected with Connect as APRS TNC")
         }
         usbLinks[kind] = link
         attach(radio).getOrThrow()
         prefs.rememberDevice("USB|${kind.name}|%04x:%04x".format(driver.device.vendorId, driver.device.productId))
         kind
+    }
+
+    // ------------------------------------------------------------------ APRS
+
+    private fun aprsConfig() = org.highbridge.app.aprs.AprsRadio.Config(
+        prefs.aprsCall.value.trim().uppercase(), prefs.aprsSymbol.value, prefs.aprsComment.value,
+        prefs.aprsPath.value.split(',').map { it.trim().uppercase() }.filter { it.isNotEmpty() },
+        prefs.aprsIs.value, prefs.aprsIsHost.value, prefs.aprsRadiusKm.value, { myLocation.value },
+        { if (prefs.aprsGateway.value) aprsGateway.calls() else emptySet() })
+
+    private fun aprsRadio(link: StreamLink?, name: String?): org.highbridge.app.aprs.AprsRadio {
+        require(org.highbridge.app.aprs.AprsFormat.isCallsign(prefs.aprsCall.value.trim())) { "Set your amateur radio call sign in APRS settings first" }
+        return org.highbridge.app.aprs.AprsRadio({ aprsConfig() }, link, name)
+    }
+
+    /** APRS over the internet only (APRS-IS): see and message stations without a TNC. */
+    suspend fun connectAprsInternet(): Result<Unit> = runCatching {
+        disconnect(ProtocolType.APRS)
+        prefs.setAprsIs(true)
+        attach(aprsRadio(null, null)).getOrThrow()
+        prefs.rememberDevice("IS|APRS|-")
+    }
+
+    /** A KISS TNC paired over classic Bluetooth (serial port profile). */
+    @SuppressLint("MissingPermission")
+    suspend fun connectAprsSpp(device: BluetoothDevice): Result<Unit> = runCatching {
+        disconnect(ProtocolType.APRS)
+        attach(aprsRadio(org.highbridge.core.protocol.link.BluetoothSppStream(device), device.name ?: device.address)).getOrThrow()
+        prefs.rememberDevice("SPP|APRS|${device.address}")
+    }
+
+    /** A KISS TNC on USB (NinoTNC, Mobilinkd, a LoRa APRS iGate) at [baud]. */
+    suspend fun connectAprsUsb(driver: UsbSerialDriver, baud: Int): Result<Unit> = runCatching {
+        disconnect(ProtocolType.APRS)
+        val link = UsbSerialLink(ctx.getSystemService(UsbManager::class.java), driver, baud)
+        attach(aprsRadio(link, UsbDevices.describe(driver.device))).getOrThrow()
+        usbLinks[ProtocolType.APRS] = link
+        prefs.rememberDevice("USBK|APRS|%04x:%04x:%d".format(driver.device.vendorId, driver.device.productId, baud))
     }
 
     /** Reticulum without a radio: Wi-Fi (AutoInterface) and any TCP hosts from settings. */
@@ -199,10 +243,15 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     suspend fun connectTcp(host: String, protocol: ProtocolType): Result<Unit> = runCatching {
         require(protocol != ProtocolType.RETICULUM) { "For Reticulum over the network, add a TCP host in Settings" }
         val (h, p) = host.trim().let { if (':' in it) it.substringBeforeLast(':') to it.substringAfterLast(':').toInt()
-            else it to if (protocol == ProtocolType.MESHCORE) org.highbridge.core.protocol.link.TcpStreamLink.MESHCORE_PORT else org.highbridge.core.protocol.link.TcpStreamLink.MESHTASTIC_PORT }
+            else it to when (protocol) { ProtocolType.MESHCORE -> org.highbridge.core.protocol.link.TcpStreamLink.MESHCORE_PORT; ProtocolType.APRS -> 8001
+                else -> org.highbridge.core.protocol.link.TcpStreamLink.MESHTASTIC_PORT } }
         disconnect(protocol)
         val link = org.highbridge.core.protocol.link.TcpStreamLink(h, p)
-        val radio: MeshRadio = if (protocol == ProtocolType.MESHCORE) MeshCoreRadio(MeshCoreLink(link, isSerial = true)) else MeshtasticRadio(MeshtasticSerialLink(link))
+        val radio: MeshRadio = when (protocol) {
+            ProtocolType.MESHCORE -> MeshCoreRadio(MeshCoreLink(link, isSerial = true))
+            ProtocolType.APRS -> aprsRadio(link, "$h:$p")   // Direwolf and other network KISS TNCs
+            else -> MeshtasticRadio(MeshtasticSerialLink(link))
+        }
         attach(radio).getOrThrow()
         tcpHosts[protocol] = h
         prefs.rememberDevice("TCP|${protocol.name}|$h:$p")
@@ -234,6 +283,8 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
             },
         )
         if (radio is ReticulumRadio) rejoinGroups(radio)
+        if (radio is org.highbridge.app.aprs.AprsRadio) jobs[radio.protocol] = jobs[radio.protocol].orEmpty() +
+            scope.launch { radio.heardMessages.collect { runCatching { onAprsHeard(it) } } }
         refreshService()
         return r
     }
@@ -279,6 +330,10 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
                 "TCP" -> runCatching { connectTcp(parts[2], proto) }
                 "USB" -> UsbDevices.drivers(usb).firstOrNull { "%04x:%04x".format(it.device.vendorId, it.device.productId) == parts[2] && usb.hasPermission(it.device) }
                     ?.let { runCatching { connectUsb(it) } }
+                "USBK" -> UsbDevices.drivers(usb).firstOrNull { "%04x:%04x".format(it.device.vendorId, it.device.productId) == parts[2].substringBeforeLast(':') && usb.hasPermission(it.device) }
+                    ?.let { runCatching { connectAprsUsb(it, parts[2].substringAfterLast(':').toIntOrNull() ?: 9600) } }
+                "SPP" -> bt?.let { runCatching { connectAprsSpp(it.getRemoteDevice(parts[2])) } }
+                "IS" -> runCatching { connectAprsInternet() }
             }
         }
     }
@@ -292,6 +347,10 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
 
     private suspend fun onPacket(p: MeshPacket) {
         media.onPacket(p)
+        // APRS gateway: direct messages to this node from Meshtastic or MeshCore.
+        if (prefs.aprsGateway.value && p.toNodeId != null && p.protocol != ProtocolType.APRS && p.protocol != ProtocolType.RETICULUM) {
+            (p.payload as? MeshPayload.Text)?.let { t -> handleGateway(p, t.body) }
+        }
         val tp = p.payload as? MeshPayload.Text ?: return
         val text = tp.body
         if (dao.countPacket(p.packetId, p.protocol.name) > 0) return
@@ -305,6 +364,11 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     }
 
     private suspend fun onEvent(e: RadioEvent) {
+        if (e is RadioEvent.Ack && e.protocol == ProtocolType.APRS) gatewayPending.remove(e.packetId)?.let { key ->
+            val proto = runCatching { ProtocolType.valueOf(key.substringBefore(':')) }.getOrNull()
+            if (proto != null) radio(proto)?.sendText(0, if (e.delivered) "APRS: delivered ✓" else "APRS: not acknowledged (${e.reason ?: "no reply"})", key.substringAfter(':'))
+            return
+        }
         val proto = e.protocol.name
         wardriver.onEvent(e)
         when (e) {
@@ -340,6 +404,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
             is RadioEvent.AdminReply -> { _admin.emit(e); _log.emit(e.protocol to "← ${e.fromId}: ${e.text}") }
             is RadioEvent.Log -> _log.emit(e.protocol to e.line)
             is RadioEvent.Airtime -> {
+                if (e.protocol == ProtocolType.MESHTASTIC) lastMtTx = System.currentTimeMillis()
                 airtime.recordTx(e.txMs)
                 _airtimePct.value = airtime.dutyCyclePercent()
                 if (airtime.shouldWarn()) _toast.emit("Airtime is at ${"%.1f".format(airtime.dutyCyclePercent())}% of the hour. ${prefs.region.value.label} allows ${prefs.region.value.dutyCyclePercent}%.")
@@ -430,6 +495,62 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         notifyMessage(conv, m.senderName, label)
     }
 
+    // ------------------------------------------------------------------ APRS gateway and station ID
+
+    private var aprsFilterAt: Pair<Double, Double>? = null
+
+    private suspend fun handleGateway(p: MeshPacket, text: String) {
+        val key = "${p.protocol.name}:${p.fromNodeId}"
+        when (val a = aprsGateway.onMeshDirect(key, text)) {
+            is org.highbridge.app.aprs.AprsGateway.Action.Reply -> radio(p.protocol)?.sendText(0, a.text, p.fromNodeId)
+            is org.highbridge.app.aprs.AprsGateway.Action.SendAprs -> {
+                val ap = aprs
+                val r = when {
+                    ap == null || !ap.canTransmit -> Result.failure(IllegalStateException("The APRS gateway is offline right now"))
+                    else -> ap.sendMessageAs(a.fromCall, a.toCall, a.text)
+                }
+                r.onSuccess { id -> gatewayPending[id] = key }
+                radio(p.protocol)?.sendText(0, r.fold({ "Sent to ${a.toCall} on APRS as ${a.fromCall}" }, { "Not sent: ${it.message}" }), p.fromNodeId)
+            }
+            org.highbridge.app.aprs.AprsGateway.Action.None -> {}
+        }
+    }
+
+    /** APRS message id -> mesh user it came from, to tell them when it's acknowledged. */
+    private val gatewayPending = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** APRS messages for gateway users go back to them over the mesh, acknowledged on their behalf. */
+    private suspend fun onAprsHeard(h: org.highbridge.app.aprs.AprsRadio.Heard) {
+        if (!prefs.aprsGateway.value) return
+        val key = aprsGateway.meshKeyFor(h.to) ?: return
+        val proto = runCatching { ProtocolType.valueOf(key.substringBefore(':')) }.getOrNull() ?: return
+        val r = radio(proto) ?: return
+        r.sendText(0, "APRS ${h.from}: ${h.text}".take(r.maxPayloadBytes), key.substringAfter(':')).onSuccess {
+            h.msgNo?.let { no -> aprs?.sendAck(h.to, h.from, no) }   // only once it's on its way over the mesh
+        }
+    }
+
+    private var lastMtTx = 0L
+    private var lastStationId = 0L
+
+    /**
+     * FCC 97.119: identify at least every 10 minutes while transmitting and at the end. In licensed mode the
+     * node's user record carries the call sign, so re-broadcast it after a quiet spell or every 10 minutes of activity.
+     */
+    private suspend fun stationIdLoop() {
+        while (true) {
+            delay(30_000)
+            val mt = meshtastic ?: continue
+            if (!prefs.autoStationId.value || !mt.isLicensed) continue
+            val now = System.currentTimeMillis()
+            if (lastMtTx <= lastStationId + 5_000) continue        // nothing sent since the last ID
+            if (now - lastStationId >= 10 * 60_000L || now - lastMtTx >= 3 * 60_000L) {
+                lastStationId = now
+                mt.sendStationId()
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ sending
 
     data class Target(val protocol: ProtocolType, val channel: Int, val toNodeId: String?)
@@ -502,6 +623,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         val text = if (sos) "SOS! Need help at $where" else "Check-in: OK at $where"
         val sent = mutableListOf<String>()
         for ((p, r) in _radios.value) {
+            if (p == ProtocolType.APRS) continue   // APRS has no group channel; use a beacon or status there
             // SOS goes out even past the airtime allowance; check-ins respect it.
             if (!sos && airtime.mustHold()) continue
             val ok = r.sendText(0, text, null).isSuccess
@@ -539,6 +661,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
             ProtocolType.MESHTASTIC -> (1..EncryptedChannel.maxSlot(p)).firstOrNull { it !in used }
             ProtocolType.MESHCORE -> (r as? MeshCoreRadio)?.freeChannelSlot()
             ProtocolType.RETICULUM -> maxOf(used.maxOrNull() ?: 0, dao.channelsNow().filter { it.protocol == p.name }.maxOfOrNull { it.slot } ?: 0) + 1
+            ProtocolType.APRS -> null
         }
     }
 
@@ -548,7 +671,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         when (p) {
             ProtocolType.MESHCORE -> (radio(p) as? MeshCoreRadio)?.removeChannel(slot)?.getOrThrow()
             ProtocolType.MESHTASTIC -> meshtastic?.removeChannel(slot)?.getOrThrow()
-            ProtocolType.RETICULUM -> {}
+            ProtocolType.RETICULUM, ProtocolType.APRS -> {}
         }
         dao.channelsNow().filter { it.protocol == p.name && it.slot == slot }.forEach { dao.deleteChannel(it.id) }
     }
@@ -569,7 +692,12 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         if (alt != null) myAltitudeM.value = alt
         scope.launch {
             recordingTrackId?.let { dao.insertTrackPoint(TrackPointEntity(trackId = it, lat = lat, lon = lon, altM = alt, timeMs = System.currentTimeMillis())) }
-            if (prefs.shareLocation.value && shouldShare(lat, lon)) for (r in _radios.value.values) runCatching { r.sendPosition(lat, lon, alt?.toInt()) }
+            if ((prefs.shareLocation.value || prefs.aprsBeacon.value) && shouldShare(lat, lon)) for (r in _radios.value.values) {
+                // APRS beacons follow their own switch; the meshes follow "share my location".
+                val wanted = if (r.protocol == ProtocolType.APRS) prefs.aprsBeacon.value else prefs.shareLocation.value
+                if (wanted) runCatching { r.sendPosition(lat, lon, alt?.toInt()) }
+            }
+            aprs?.let { a -> val last = aprsFilterAt; if (last == null || Geo.distanceM(last.first, last.second, lat, lon) > 5_000) { aprsFilterAt = lat to lon; a.refreshFilter() } }
         }
     }
 

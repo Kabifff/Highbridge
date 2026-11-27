@@ -254,6 +254,55 @@ fun everything() = runBlocking {
     val prof = org.meshtastic.proto.DeviceProfile(long_name = "Test", config = org.meshtastic.proto.LocalConfig(lora = org.meshtastic.proto.Config.LoRaConfig(hop_limit = 5))).encode()
     check("Meshtastic DeviceProfile encodes and decodes", org.meshtastic.proto.DeviceProfile.ADAPTER.decode(prof).config?.lora?.hop_limit == 5)
 
+    // APRS
+    val aprsKiss = org.highbridge.app.aprs.Kiss
+    val aprsFrame = byteArrayOf(1, 0xC0.toByte(), 2, 0xDB.toByte(), 3)
+    val aprsKissed = aprsKiss.encode(aprsFrame)
+    check("KISS escapes FEND and FESC", aprsKissed.contentEquals(byteArrayOf(0xC0.toByte(), 0, 1, 0xDB.toByte(), 0xDC.toByte(), 2, 0xDB.toByte(), 0xDD.toByte(), 3, 0xC0.toByte())))
+    val aprsKd = org.highbridge.app.aprs.Kiss.Decoder()
+    val aprsSplit = aprsKd.feed(aprsKissed.copyOfRange(0, 4)) + aprsKd.feed(aprsKissed.copyOfRange(4, aprsKissed.size))
+    check("KISS decoder rejoins a split frame", aprsSplit.size == 1 && aprsSplit[0].contentEquals(aprsFrame))
+    val aprsPkt = org.highbridge.app.aprs.AprsPacket("N0CALL-7", "APZHBG", listOf("WIDE1-1", "WIDE2-1"), "=4457.00N/09305.60W[Test")
+    val ax25Back = org.highbridge.app.aprs.Ax25.decode(org.highbridge.app.aprs.Ax25.encode(aprsPkt))
+    check("AX.25 round trip", ax25Back == aprsPkt)
+    check("TNC2 parse", org.highbridge.app.aprs.AprsPacket.parseTnc2("K0ABC-9>APDR16,WIDE1-1*,qAR,N0XYZ:!4457.00N/09305.60W>hi") ==
+        org.highbridge.app.aprs.AprsPacket("K0ABC-9", "APDR16", listOf("WIDE1-1*", "qAR", "N0XYZ"), "!4457.00N/09305.60W>hi"))
+    val aprsPos = org.highbridge.app.aprs.AprsParser.parse(aprsPkt) as? org.highbridge.app.aprs.AprsData.Position
+    check("APRS uncompressed position", aprsPos != null && kotlin.math.abs(aprsPos.lat - 44.95) < 1e-6 && kotlin.math.abs(aprsPos.lon + 93.0933333) < 1e-6 && aprsPos.symbol == "/[" && aprsPos.comment == "Test")
+    val aprsAlt = org.highbridge.app.aprs.AprsParser.parse(aprsPkt.copy(info = "!4457.00N/09305.60W>090/045 car /A=000850")) as? org.highbridge.app.aprs.AprsData.Position
+    check("APRS course, speed and altitude", aprsAlt?.courseDeg == 90 && aprsAlt.speedKnots == 45 && aprsAlt.altitudeFt == 850 && aprsAlt.comment == "car")
+    // Compressed: 44.95 N, 93.0933 W built from the spec's formulas
+    fun b91(v: Int) = String(CharArray(4) { i -> (33 + (v / Math.pow(91.0, (3 - i).toDouble()).toInt()) % 91).toChar() })
+    val cy = b91(Math.round(380926 * (90 - 44.95)).toInt()); val cx = b91(Math.round(190463 * (180 - 93.0933333)).toInt())
+    val cpos = org.highbridge.app.aprs.AprsParser.parse(aprsPkt.copy(info = "=/$cy$cx>  T")) as? org.highbridge.app.aprs.AprsData.Position
+    check("APRS compressed position", cpos != null && kotlin.math.abs(cpos.lat - 44.95) < 1e-4 && kotlin.math.abs(cpos.lon + 93.0933) < 1e-4 && cpos.symbol == "/>")
+    // Mic-E: destination S32U6T = 33°25.64' N, West; longitude 93°05.60'
+    val mic = org.highbridge.app.aprs.AprsParser.parse(org.highbridge.app.aprs.AprsPacket("K0ABC-9", "S32U6T", emptyList(), "`" + (93 + 28).toChar() + (5 + 88).toChar() + (60 + 28).toChar() + "l\u001c\u001c>/")) as? org.highbridge.app.aprs.AprsData.Position
+    check("APRS Mic-E position", mic != null && kotlin.math.abs(mic.lat - (33 + 25.64 / 60)) < 1e-6 && kotlin.math.abs(mic.lon + (93 + 5.60 / 60)) < 1e-6 && mic.symbol == "/>")
+    val aprsMsg = org.highbridge.app.aprs.AprsParser.parse(aprsPkt.copy(info = ":N0CALL-7 :Hello there{42")) as? org.highbridge.app.aprs.AprsData.Message
+    check("APRS message with number", aprsMsg?.addressee == "N0CALL-7" && aprsMsg.text == "Hello there" && aprsMsg.msgNo == "42")
+    val aprsAck = org.highbridge.app.aprs.AprsParser.parse(aprsPkt.copy(info = ":N0CALL-7 :ack42")) as? org.highbridge.app.aprs.AprsData.Ack
+    check("APRS ack", aprsAck?.msgNo == "42" && !aprsAck.rejected)
+    check("APRS message format", org.highbridge.app.aprs.AprsFormat.message("k0abc", "hi {there}", "7") == ":K0ABC    :hi  there}{7")
+    check("APRS position format", org.highbridge.app.aprs.AprsFormat.position(44.95, -93.0933333, "/[", "Test") == "=4457.00N/09305.60W[Test")
+    check("APRS-IS passcode N0CALL = 13023", org.highbridge.app.aprs.AprsFormat.passcode("N0CALL-9") == 13023)
+    check("Call sign check", org.highbridge.app.aprs.AprsFormat.isCallsign("KF0WNW-7") && org.highbridge.app.aprs.AprsFormat.isCallsign("VE3ABC") && !org.highbridge.app.aprs.AprsFormat.isCallsign("HELLO"))
+    val unwrapped = org.highbridge.app.aprs.AprsParser.unwrap(aprsPkt.copy(info = "}K0ABC>APRS,TCPIP,N0CALL*::N0CALL-7 :hi{1"))
+    check("APRS third-party unwrap", unwrapped.source == "K0ABC" && unwrapped.info == ":N0CALL-7 :hi{1")
+    // Grid squares
+    check("Maidenhead: Saint Paul is EN34", org.highbridge.app.pro.Geo.maidenhead(44.95, -93.09, 4) == "EN34" &&
+        org.highbridge.app.pro.Geo.maidenhead(51.4778, -0.0015) == "IO91xl")
+    // Gateway
+    var aprsRegs = ""
+    val aprsGw = org.highbridge.app.aprs.AprsGateway({ aprsRegs }, { aprsRegs = it })
+    val aprsUn = aprsGw.onMeshDirect("MESHTASTIC:!abcd", "K0XYZ: hello")
+    check("Gateway refuses unregistered users", aprsUn is org.highbridge.app.aprs.AprsGateway.Action.Reply && (aprsUn as org.highbridge.app.aprs.AprsGateway.Action.Reply).text.startsWith("Register"))
+    aprsGw.onMeshDirect("MESHTASTIC:!abcd", "!register n0call-7")
+    val sendA = aprsGw.onMeshDirect("MESHTASTIC:!abcd", "K0XYZ: hello", now = 1_000_000)
+    check("Gateway sends as the registered call", sendA == org.highbridge.app.aprs.AprsGateway.Action.SendAprs("N0CALL-7", "K0XYZ", "hello"))
+    check("Gateway ignores ordinary chat", aprsGw.onMeshDirect("MESHTASTIC:!abcd", "see you at 5", now = 2_000_000) == org.highbridge.app.aprs.AprsGateway.Action.None &&
+        aprsGw.meshKeyFor("N0CALL-7") == "MESHTASTIC:!abcd")
+
     coroutineContext.cancelChildren()
     println(if (fails == 0) "ALL PASSED" else "$fails FAILED")
     org.junit.Assert.assertEquals(0, fails)

@@ -44,6 +44,33 @@ class Prefs(ctx: Context) {
     /** Per-conversation notifications: "ALL", "MENTIONS" or "NONE", stored as conv=level lines. */
     val notifyLevels = state(sp.getString("notifyLevels", "") ?: "")
 
+    // APRS (amateur radio). Call sign with optional SSID, e.g. "N0CALL-7".
+    val aprsCall = state(sp.getString("aprsCall", "") ?: "")
+    val aprsSymbol = state(sp.getString("aprsSymbol", "/[") ?: "/[")
+    val aprsComment = state(sp.getString("aprsComment", "Highbridge") ?: "Highbridge")
+    val aprsPath = state(sp.getString("aprsPath", "WIDE1-1,WIDE2-1") ?: "WIDE1-1,WIDE2-1")
+    val aprsIs = state(sp.getBoolean("aprsIs", true))
+    val aprsIsHost = state(sp.getString("aprsIsHost", "rotate.aprs2.net:14580") ?: "rotate.aprs2.net:14580")
+    val aprsRadiusKm = state(sp.getInt("aprsRadius", 50))
+    /** Beacon your position on APRS when you move (separate from sharing on the mesh). */
+    val aprsBeacon = state(sp.getBoolean("aprsBeacon", false))
+    val aprsGateway = state(sp.getBoolean("aprsGateway", false))
+    val aprsGatewayRegs = state(sp.getString("aprsGwRegs", "") ?: "")
+    /** Licensed mode: broadcast your Meshtastic node's call sign at least every 10 minutes while you transmit. */
+    val autoStationId = state(sp.getBoolean("autoStationId", true))
+
+    fun setAprsCall(v: String) { aprsCall.value = v; save { putString("aprsCall", v) } }
+    fun setAprsSymbol(v: String) { aprsSymbol.value = v; save { putString("aprsSymbol", v) } }
+    fun setAprsComment(v: String) { aprsComment.value = v; save { putString("aprsComment", v) } }
+    fun setAprsPath(v: String) { aprsPath.value = v; save { putString("aprsPath", v) } }
+    fun setAprsIs(v: Boolean) { aprsIs.value = v; save { putBoolean("aprsIs", v) } }
+    fun setAprsIsHost(v: String) { aprsIsHost.value = v; save { putString("aprsIsHost", v) } }
+    fun setAprsRadiusKm(v: Int) { aprsRadiusKm.value = v; save { putInt("aprsRadius", v) } }
+    fun setAprsBeacon(v: Boolean) { aprsBeacon.value = v; save { putBoolean("aprsBeacon", v) } }
+    fun setAprsGateway(v: Boolean) { aprsGateway.value = v; save { putBoolean("aprsGateway", v) } }
+    fun setAprsGatewayRegs(v: String) { aprsGatewayRegs.value = v; save { putString("aprsGwRegs", v) } }
+    fun setAutoStationId(v: Boolean) { autoStationId.value = v; save { putBoolean("autoStationId", v) } }
+
     private fun save(block: SharedPreferences.Editor.() -> Unit) = sp.edit().apply(block).apply()
 
     fun setOnboarded(v: Boolean) { onboarded.value = v; save { putBoolean("onboarded", v) } }

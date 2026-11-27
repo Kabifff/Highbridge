@@ -100,6 +100,7 @@ data class EncryptedChannel(
             ProtocolType.MESHTASTIC -> 32 // AES-256 PSK (protobuf max 32 bytes)
             ProtocolType.MESHCORE -> 16   // firmware CMD_SET_CHANNEL supports 128-bit secrets only
             ProtocolType.RETICULUM -> 64  // RNS GROUP destinations use a 64-byte (AES-256) key
+            ProtocolType.APRS -> 0        // amateur radio: no encryption, no channels
         }
 
         /** Highest slot each protocol accepts. */
@@ -107,6 +108,7 @@ data class EncryptedChannel(
             ProtocolType.MESHTASTIC -> 7   // 8 channels
             ProtocolType.MESHCORE -> 255   // channel_idx is a byte; firmware rejects unknown slots
             ProtocolType.RETICULUM -> Int.MAX_VALUE
+            ProtocolType.APRS -> -1
         }
 
         /** Longest channel name in bytes (Meshtastic: 12-byte field incl. terminator; MeshCore: 32). */
@@ -114,6 +116,7 @@ data class EncryptedChannel(
             ProtocolType.MESHTASTIC -> 11
             ProtocolType.MESHCORE -> 31
             ProtocolType.RETICULUM -> 64
+            ProtocolType.APRS -> 0
         }
 
         /** Slot index meaning "the next free slot on the radio", filled in when the channel is loaded. */

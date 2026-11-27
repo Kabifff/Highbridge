@@ -1,7 +1,7 @@
 # Highbridge feature comparison
 
 How Highbridge compares with the official Meshtastic and MeshCore apps and with MeshWave,
-as of version 0.4.0 (November 2026). ✓ = has it, ◐ = partly, ✗ = not yet.
+as of version 0.5.0 (November 2026). ✓ = has it, ◐ = partly, ✗ = not yet.
 
 ## Meshtastic (official Android app)
 
@@ -74,6 +74,21 @@ as of version 0.4.0 (November 2026). ✓ = has it, ◐ = partly, ✗ = not yet.
 | AR landmark identification | ◐ | Peaks, towers and viewpoints from OpenStreetMap, kept for offline use where you've been; not a 1.9 million-feature offline database |
 | AR view of nodes and pins, AR waypoint drop | ✓ | |
 | Map views | ✓ | 9, including hybrid and terrain, plus the AR view |
+
+## Ham radio features in other mesh apps
+
+| Feature | Highbridge | Notes |
+|---|---|---|
+| Meshtastic licensed (ham) mode | ✓ | Plus automatic station ID every 10 minutes while transmitting |
+| APRS over the internet (APRS-IS) | ✓ | Stations near you on the map, two-way messaging with acknowledgements |
+| APRS through a KISS TNC | ✓ | Bluetooth LE (BLE KISS API), classic Bluetooth, USB, or TCP (Direwolf); KISS or TNC2 text |
+| LoRa APRS | ✓ | Through a tracker or iGate running LoRa APRS firmware, as its TNC |
+| APRS positions: plain, compressed and Mic-E; objects and items | ✓ | |
+| Position beacons, status, map symbols | ✓ | |
+| Mesh ⇄ APRS gateway with call sign registration (like aprstastic) | ✓ | Only registered licensed users reach APRS |
+| Maidenhead grid squares | ✓ | You, nodes and the compass |
+| Call sign lookup | ✓ | callook.info (FCC) and HamDB |
+| MeshCom | ✗ | Its own ham mesh network, mostly in Europe |
 
 ## Only in Highbridge
 

@@ -33,6 +33,19 @@ object Geo {
         return Math.toDegrees(p2) to ((Math.toDegrees(l2) + 540) % 360 - 180)
     }
 
+    /** Maidenhead grid locator (the ham "grid square"), e.g. "EN34kw" for [chars] = 6. */
+    fun maidenhead(lat: Double, lon: Double, chars: Int = 6): String {
+        var x = (lon + 180).coerceIn(0.0, 359.999999); var y = (lat + 90).coerceIn(0.0, 179.999999)
+        val sb = StringBuilder()
+        sb.append('A' + (x / 20).toInt()).append('A' + (y / 10).toInt())
+        x %= 20; y %= 10
+        sb.append('0' + (x / 2).toInt()).append('0' + y.toInt())
+        x %= 2; y %= 1
+        if (chars >= 6) sb.append('a' + (x * 12).toInt()).append('a' + (y * 24).toInt())
+        if (chars >= 8) { x = (x * 12) % 1; y = (y * 24) % 1; sb.append('0' + (x * 10).toInt()).append('0' + (y * 10).toInt()) }
+        return sb.toString()
+    }
+
     fun compassPoint(deg: Double): String = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")[(((deg + 22.5) % 360) / 45).toInt()]
 
     fun formatDistance(m: Double, metric: Boolean): String = if (metric) {

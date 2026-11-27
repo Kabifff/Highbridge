@@ -32,6 +32,7 @@ class BleScanner(ctx: Context) {
             val name = r.scanRecord?.deviceName ?: r.device.name ?: return
             val guess = when {
                 ParcelUuid(MeshtasticBleLink.SERVICE) in uuids -> ProtocolType.MESHTASTIC
+                ParcelUuid(org.highbridge.core.protocol.link.BleKissStream.SERVICE) in uuids -> ProtocolType.APRS
                 name.contains("rnode", true) -> ProtocolType.RETICULUM
                 ParcelUuid(BleNusStream.SERVICE) in uuids || name.startsWith("MeshCore", true) -> ProtocolType.MESHCORE
                 else -> null

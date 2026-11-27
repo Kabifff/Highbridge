@@ -342,8 +342,9 @@ fun ConnectScreen() {
                 Column(Modifier.weight(1f)) { Text(f.name, fontWeight = FontWeight.Bold); Text("${f.device.address} · ${f.rssi} dBm", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (busy == f.device.address) Text(tr("Connecting…"), fontSize = 12.sp)
                 DropdownMenu(pick, { pick = false }) {
-                    supportedProtocols.forEach { p ->
-                        DropdownMenuItem({ Text("Connect as ${p.name.lowercase().replaceFirstChar { it.uppercase() }}${if (p == ProtocolType.RETICULUM) " (RNode)" else ""}${if (p == f.guess) " ✓" else ""}") }, {
+                    (supportedProtocols + ProtocolType.APRS).forEach { p ->
+                        DropdownMenuItem({ Text(if (p == ProtocolType.APRS) "Connect as APRS TNC (KISS)${if (p == f.guess) " ✓" else ""}"
+                            else "Connect as ${p.name.lowercase().replaceFirstChar { it.uppercase() }}${if (p == ProtocolType.RETICULUM) " (RNode)" else ""}${if (p == f.guess) " ✓" else ""}") }, {
                             pick = false; busy = f.device.address
                             scope.launch {
                                 scanner.stop()
@@ -452,9 +453,11 @@ suspend fun requestUsbPermission(ctx: Context, device: UsbDevice): Boolean {
     return try { result.await() } finally { runCatching { ctx.unregisterReceiver(receiver) } }
 }
 
-/** Protocols this edition can talk to (the store edition has no Reticulum). */
+/** Mesh networks this edition can talk to (the store edition has no Reticulum). APRS is separate: see [shownProtocols]. */
 val supportedProtocols: List<ProtocolType> =
-    ProtocolType.entries.filter { it != ProtocolType.RETICULUM || org.highbridge.app.rns.ReticulumSupport.AVAILABLE }
+    ProtocolType.entries.filter { it != ProtocolType.APRS && (it != ProtocolType.RETICULUM || org.highbridge.app.rns.ReticulumSupport.AVAILABLE) }
+/** Everything that can put nodes on the map and in the node list: the meshes plus APRS stations. */
+val shownProtocols: List<ProtocolType> = supportedProtocols + ProtocolType.APRS
 val supportedBridgeModes: List<BridgeMode> = BridgeMode.entries.filter { m -> m.activeProtocols.all { it in supportedProtocols } }
 
 

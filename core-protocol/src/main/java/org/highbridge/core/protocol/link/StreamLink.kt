@@ -150,3 +150,75 @@ class BleNusStream(context: Context, device: BluetoothDevice) : StreamLink {
         val TX: UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")  // radio -> phone
     }
 }
+
+/** KISS over Bluetooth LE (the BLE KISS API used by Mobilinkd TNC3/4, LoRa APRS trackers and the aprs.fi app). */
+class BleKissStream(context: Context, device: BluetoothDevice) : StreamLink {
+    @SuppressLint("MissingPermission")
+    override val name: String = device.name ?: device.address
+    val gatt = GattClient(context, device)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 512, onBufferOverflow = BufferOverflow.SUSPEND)
+    override val incoming: SharedFlow<ByteArray> = _incoming
+    override val isOpen: StateFlow<Boolean> = gatt.connected
+    private var job: Job? = null
+
+    override suspend fun open(): Result<Unit> = runCatching {
+        gatt.connect()
+        check(gatt.hasService(SERVICE)) { "This device has no BLE KISS TNC service" }
+        job = scope.launch { gatt.notifications.collect { if (it.uuid == RX) _incoming.emit(it.value) } }
+        gatt.enableNotifications(SERVICE, RX)
+    }
+
+    override suspend fun write(data: ByteArray): Result<Unit> = runCatching {
+        val chunk = (gatt.mtu - 3).coerceAtLeast(20)
+        var i = 0
+        while (i < data.size) {
+            val end = minOf(data.size, i + chunk)
+            gatt.write(SERVICE, TX, data.copyOfRange(i, end))
+            i = end
+        }
+    }
+
+    override fun close() { job?.cancel(); gatt.close(); scope.cancel() }
+
+    companion object {
+        val SERVICE: UUID = UUID.fromString("00000001-ba2a-46c9-ae49-01b0961f68bb")
+        val TX: UUID = UUID.fromString("00000002-ba2a-46c9-ae49-01b0961f68bb")  // phone -> TNC (write)
+        val RX: UUID = UUID.fromString("00000003-ba2a-46c9-ae49-01b0961f68bb")  // TNC -> phone (notify)
+    }
+}
+
+/** Classic Bluetooth serial (SPP), used by many TNCs (Mobilinkd TNC2, LoRa APRS trackers in classic mode). Pair first in Android settings. */
+class BluetoothSppStream(private val device: BluetoothDevice) : StreamLink {
+    @SuppressLint("MissingPermission")
+    override val name: String = device.name ?: device.address
+    private val _incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 512, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    override val incoming: SharedFlow<ByteArray> = _incoming
+    private val _open = MutableStateFlow(false)
+    override val isOpen: StateFlow<Boolean> = _open
+    private var socket: android.bluetooth.BluetoothSocket? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @SuppressLint("MissingPermission")
+    override suspend fun open(): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val s = device.createRfcommSocketToServiceRecord(SPP)
+            s.connect()
+            socket = s; _open.value = true
+            scope.launch {
+                val buf = ByteArray(1024)
+                try { while (true) { val n = s.inputStream.read(buf); if (n < 0) break; if (n > 0) _incoming.emit(buf.copyOf(n)) } }
+                catch (_: Exception) {} finally { _open.value = false }
+            }
+            Unit
+        }
+    }
+
+    override suspend fun write(data: ByteArray): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching { (socket ?: error("Not connected")).outputStream.apply { write(data); flush() }; Unit }
+    }
+
+    override fun close() { runCatching { socket?.close() }; socket = null; _open.value = false; scope.cancel() }
+
+    companion object { val SPP: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB") }
+}

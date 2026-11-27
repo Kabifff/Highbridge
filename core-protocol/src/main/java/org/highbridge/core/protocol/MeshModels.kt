@@ -5,7 +5,8 @@ package org.highbridge.core.protocol
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
-enum class ProtocolType(val shortTag: String) { MESHTASTIC("MT"), MESHCORE("MC"), RETICULUM("RNS") }
+/** [APRS] is amateur-radio APRS (a TNC or APRS-IS), never bridged to the meshes. */
+enum class ProtocolType(val shortTag: String) { MESHTASTIC("MT"), MESHCORE("MC"), RETICULUM("RNS"), APRS("APRS") }
 
 sealed interface ConnectionState {
     data object Disconnected : ConnectionState

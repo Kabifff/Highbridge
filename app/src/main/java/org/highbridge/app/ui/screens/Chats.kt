@@ -291,7 +291,7 @@ fun ChatScreen(conversation: String) {
                 }
                 androidx.compose.material3.DropdownMenu(more, { more = false }) {
                     androidx.compose.material3.DropdownMenuItem({ Text(tr("Quick replies")) }, { more = false; quick = !quick }, leadingIcon = { Icon(Icons.Filled.Bolt, null) })
-                    if (target.protocol != ProtocolType.RETICULUM) {
+                    if (target.protocol != ProtocolType.RETICULUM && target.protocol != ProtocolType.APRS) {
                         androidx.compose.material3.DropdownMenuItem({ Text(tr("Photo")) }, { more = false; pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                             leadingIcon = { Icon(Icons.Filled.Image, null) })
                         androidx.compose.material3.DropdownMenuItem({ Text((if (live) "✓ " else "") + tr("Live talk")) }, {
@@ -328,7 +328,7 @@ fun ChatScreen(conversation: String) {
                         recording = false
                         if (pcm.size > VoiceIO.SAMPLE_RATE / 2) app.radios.sendVoice(conversation, pcm).onFailure { ctx.toast(it.message, long = true) }
                     }
-                }, enabled = radio != null && target.protocol != ProtocolType.RETICULUM) { Icon(if (recording) Icons.Filled.Stop else Icons.Filled.Mic, if (recording) "Stop and send" else "Hold to record voice") }
+                }, enabled = radio != null && target.protocol != ProtocolType.RETICULUM && target.protocol != ProtocolType.APRS) { Icon(if (recording) Icons.Filled.Stop else Icons.Filled.Mic, if (recording) "Stop and send" else "Hold to record voice") }
             } else {
                 IconButton(onClick = {
                     val t = text.trim(); text = ""
@@ -348,7 +348,7 @@ fun ChatScreen(conversation: String) {
                     REACTIONS.forEach { e -> TextButton(onClick = {
                         actionsFor = null
                         scope.launch { app.radios.sendText(conversation, e, replyTo = m.packetId, emoji = true).onFailure { ctx.toast(it.message, long = true) } }
-                    }, enabled = radio != null && !m.packetId.startsWith("pending")) { Text(e, fontSize = 20.sp) } }
+                    }, enabled = radio != null && !m.packetId.startsWith("pending") && target.protocol != ProtocolType.APRS) { Text(e, fontSize = 20.sp) } }
                 }
                 TextButton(onClick = { replyTo = m; actionsFor = null }) { Text(tr("Reply")) }
                 if (!m.outgoing && target.toNodeId == null) TextButton(onClick = {

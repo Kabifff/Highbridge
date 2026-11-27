@@ -19,6 +19,13 @@
 <li>USB terminal, UF2 and ESP32 flashing, ESP32 Wi-Fi and Bluetooth updates, nRF52 Bluetooth updates, and firmware release checks</li>
 </ul>
 
+<p><b>Ham radio</b></p>
+<ul>
+<li>APRS over the internet or on the air through a KISS TNC (Bluetooth, USB or Direwolf), including LoRa APRS trackers</li>
+<li>APRS messaging, position beacons and a gateway that lets licensed mesh users reach APRS under their own call sign</li>
+<li>Meshtastic licensed mode with automatic station ID, grid squares and call sign lookup</li>
+</ul>
+
 <p><b>Field tools</b></p>
 <ul>
 <li>Offline-capable map of nodes, node list with signal and battery, compass to any node</li>
@@ -33,7 +40,7 @@
 <li>Home-screen widget; English, Spanish and Norwegian</li>
 </ul>
 
-<p>No accounts, no ads, no tracking. Messages travel radio to radio and never pass through a server, unless you turn on MQTT. Wardriving coverage is shared only if you choose to.</p>
+<p>No accounts, no ads, no tracking. Messages travel radio to radio and never pass through a server, unless you turn on MQTT or APRS over the internet. Wardriving coverage is shared only if you choose to.</p>
 
 <p>This edition covers Meshtastic and MeshCore. A full edition that adds Reticulum (Sideband, MeshChat, NomadNet) is on the project's GitHub releases page.</p>
 

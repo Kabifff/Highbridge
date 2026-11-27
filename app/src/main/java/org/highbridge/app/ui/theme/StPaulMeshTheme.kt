@@ -38,6 +38,8 @@ object StPaulMeshPalette {
     // One color per protocol, chosen to sit inside the site palette and stay apart for color-blind users.
     val Meshtastic = Color(0xFF2D6A2E)   // site green
     val MeshCore = Color(0xFF2B6F8C)     // river blue (Mississippi)
+    val Aprs = Color(0xFF7A4E9B)         // lilac purple (APRS, ham radio)
+    val AprsDark = Color(0xFFC3A3DD)
     val Reticulum = Color(0xFF98600F)    // bronze
     val MeshtasticDark = Color(0xFF86C986)
     val MeshCoreDark = Color(0xFF7CC3E0)
@@ -97,6 +99,7 @@ fun StPaulMeshTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Compos
 fun protocolColorOf(name: String): Color = when (name) {
     "MESHTASTIC" -> StPaulMeshPalette.Meshtastic
     "MESHCORE" -> StPaulMeshPalette.MeshCore
+    "APRS" -> StPaulMeshPalette.Aprs
     else -> StPaulMeshPalette.Reticulum
 }
 
@@ -108,5 +111,6 @@ fun protocolColor(p: org.highbridge.core.protocol.ProtocolType): Color {
         org.highbridge.core.protocol.ProtocolType.MESHTASTIC -> if (dark) StPaulMeshPalette.MeshtasticDark else StPaulMeshPalette.Meshtastic
         org.highbridge.core.protocol.ProtocolType.MESHCORE -> if (dark) StPaulMeshPalette.MeshCoreDark else StPaulMeshPalette.MeshCore
         org.highbridge.core.protocol.ProtocolType.RETICULUM -> if (dark) StPaulMeshPalette.ReticulumDark else StPaulMeshPalette.Reticulum
+        org.highbridge.core.protocol.ProtocolType.APRS -> if (dark) StPaulMeshPalette.AprsDark else StPaulMeshPalette.Aprs
     }
 }

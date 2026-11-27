@@ -123,7 +123,7 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
             _myId.value = idOf(myNum)
         }
         f.metadata?.let { _device.value = "Meshtastic ${it.firmware_version} · ${it.hw_model.name}" }
-        f.node_info?.let { upsertNode(it) }
+        f.node_info?.let { if (it.num == myNum) ownUser = it.user; upsertNode(it) }
         f.channel?.let { ch ->
             channelSlots[ch.index] = ch
             _channels.value = channelSlots.values.filter { it.role != Channel.Role.DISABLED }.map {
@@ -487,6 +487,19 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
         require(Regex("^[A-Z0-9]{1,3}[0-9][A-Z0-9]{0,4}$").matches(cs)) { "That doesn't look like a call sign" }
         admin(AdminMessage(set_ham_mode = org.meshtastic.proto.HamParameters(call_sign = cs, tx_power = txPowerDbm, frequency = frequencyMHz,
             short_name = cs.takeLast(4), long_name = cs)))
+        ownUser = (ownUser ?: User(id = _myId.value ?: "")).copy(long_name = cs, short_name = cs.takeLast(4), is_licensed = true)
+    }
+    /** This radio's own user record (names, and the licensed flag once ham mode is on). */
+    @Volatile var ownUser: User? = null; private set
+    val isLicensed: Boolean get() = ownUser?.is_licensed == true
+
+    /**
+     * Station identification: broadcasts this node's user record, which carries the call sign in licensed mode.
+     * Other nodes update their lists quietly; nothing appears in anyone's chat.
+     */
+    suspend fun sendStationId(): Result<Unit> = runCatching {
+        val u = ownUser ?: error("This radio hasn't sent its own details yet")
+        sendData(0, BROADCAST, PortNum.NODEINFO_APP, u.encode(), wantAck = false)
     }
     suspend fun nodeDbReset(): Result<Unit> = runCatching { admin(AdminMessage(nodedb_reset = true)) }
     /** Erases all settings (keeps nothing but the firmware). [device] = also erase keys and the node database. */

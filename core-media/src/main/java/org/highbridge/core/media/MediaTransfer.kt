@@ -68,6 +68,7 @@ class MediaTransferManager(
         ProtocolType.MESHTASTIC -> 140
         ProtocolType.MESHCORE -> 110
         ProtocolType.RETICULUM -> 140
+        ProtocolType.APRS -> 60
     }
 
     /** Splits and sends. Returns the transfer id. */

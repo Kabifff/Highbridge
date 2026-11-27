@@ -1,0 +1,7 @@
+Ham radio (APRS), for licensed amateurs:
+- See and message APRS stations over the internet (APRS-IS)
+- Go on the air through a KISS TNC: Bluetooth LE or classic, USB, or Direwolf on Wi-Fi; works with LoRa APRS trackers
+- Position beacons and status, with map symbols
+- Mesh gateway: licensed Meshtastic and MeshCore users reach APRS under their own call sign
+- Automatic station ID in Meshtastic licensed mode
+- Grid squares and call sign lookup

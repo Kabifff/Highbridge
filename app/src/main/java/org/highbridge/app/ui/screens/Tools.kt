@@ -100,6 +100,8 @@ fun ToolsScreen() {
     val tools = listOf(
         "wardrive" to ("Wardriving" to "Map where Meshtastic and MeshCore reach, live on stpaulmesh.com"),
         "search" to ("Search messages" to "Find any message on any network"),
+        "aprs" to ("APRS" to "Ham radio positions and messages: internet, TNC, beacons and a mesh gateway"),
+        "callsign" to ("Call sign lookup" to "Who holds a ham radio call sign, with grid square and license class"),
         "ar" to ("AR view" to "Point the camera to see nodes, pins and landmarks; drop a pin ahead"),
         "predict" to ("Coverage prediction" to "How far an antenna should reach, from height, power and gain"),
         "discover" to ("Discover (MeshCore)" to "Adverts heard nearby, with one tap to add them"),
@@ -230,6 +232,7 @@ fun CompassScreen(key: String) {
             }
             Text(Geo.formatDistance(dist!!, metric), style = MaterialTheme.typography.headlineMedium, color = green)
             Text(tr("Bearing %.0f° %s").format(bearing, Geo.compassPoint(bearing.toDouble())))
+            if (n?.lat != null && n.lon != null) Text(tr("Grid square") + ": " + Geo.maidenhead(n.lat, n.lon))
             val myAlt by app.radios.myAltitudeM.collectAsState()
             elevationLine(n?.altM?.toDouble(), myAlt, metric)?.let { Text(it) }
             Text(tr("Hold the phone flat and point the arrow ahead of you."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
