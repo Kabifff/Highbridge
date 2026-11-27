@@ -3,3 +3,4 @@
 - Share a channel by QR code or leave it from inside the chat
 - Scans MeshCore app channel codes too
 - Firmware updates: finds newer Meshtastic builds, shows every file with a board search, and links to the web flashers
+- Connect screen: radios stay in place instead of reshuffling by signal

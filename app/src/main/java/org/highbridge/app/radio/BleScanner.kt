@@ -37,16 +37,36 @@ class BleScanner(ctx: Context) {
                 else -> null
             }
             if (guess == null && !name.contains("mesh", true)) return
-            val item = FoundRadio(r.device, name, r.rssi, guess)
-            _found.value = (_found.value.filter { it.device.address != r.device.address } + item).sortedByDescending { it.rssi }
+            update(r.device, name, r.rssi, guess)
         }
+    }
+
+    private val smoothed = HashMap<String, Double>()
+    private val shownAt = HashMap<String, Long>()
+
+    /**
+     * Radios keep the order they were first found in, so rows never jump around while you're
+     * trying to tap one. Signal is smoothed and the row refreshes at most once a second.
+     */
+    @Synchronized
+    private fun update(device: BluetoothDevice, name: String, rssi: Int, guess: ProtocolType?) {
+        val addr = device.address
+        val avg = smoothed[addr]?.let { it * 0.7 + rssi * 0.3 } ?: rssi.toDouble()
+        smoothed[addr] = avg
+        val list = _found.value
+        val i = list.indexOfFirst { it.device.address == addr }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (i >= 0 && now - (shownAt[addr] ?: 0L) < 1_000 && list[i].name == name) return
+        shownAt[addr] = now
+        val item = FoundRadio(device, name, avg.toInt(), guess ?: list.getOrNull(i)?.guess)
+        _found.value = if (i >= 0) list.toMutableList().also { it[i] = item } else list + item
     }
 
     val bluetoothOn: Boolean get() = adapter?.isEnabled == true
 
     fun start() {
         val s = adapter?.bluetoothLeScanner ?: return
-        _found.value = emptyList()
+        synchronized(this) { _found.value = emptyList(); smoothed.clear(); shownAt.clear() }
         s.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), cb)
         scanning.value = true
     }

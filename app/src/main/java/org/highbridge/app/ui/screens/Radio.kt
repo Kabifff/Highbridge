@@ -292,7 +292,7 @@ fun ConnectScreen() {
         }
         item { SectionLabel("Bluetooth") }
         if (!scanner.bluetoothOn) item { Text("Turn on Bluetooth to find radios.", Modifier.padding(horizontal = 20.dp)) }
-        items(found) { f ->
+        items(found, key = { it.device.address }) { f ->
             var pick by remember { mutableStateOf(false) }
             Row(Modifier.fillMaxWidth().clickable { pick = true }.padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 f.guess?.let { ProtocolBadge(it) }
