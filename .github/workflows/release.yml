@@ -1,11 +1,12 @@
-# Builds signed release files when you push a version tag (for example v0.2.0), and attaches
-# them to a draft GitHub release. The signing key lives only in this repository's secrets:
+# When you publish a GitHub release (tag like v0.2.0), builds the signed full and lite APKs and
+# attaches them to it. "Run workflow" by hand builds the same files as a downloadable artifact,
+# including the Play bundle (.aab). The signing key lives only in this repository's secrets:
 #   HB_KEYSTORE_BASE64   the .jks file, base64-encoded
 #   HB_KEYSTORE_PASSWORD, HB_KEY_ALIAS, HB_KEY_PASSWORD
 name: Release
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -37,17 +38,14 @@ jobs:
       - name: Collect
         run: |
           mkdir out
-          v="${GITHUB_REF_NAME#v}"
+          v="${GITHUB_REF_NAME#v}"; v="${v//\//-}"
           cp app/build/outputs/apk/full/release/*.apk "out/Highbridge-$v-full.apk"
           cp app/build/outputs/apk/lite/release/*.apk "out/Highbridge-$v-lite.apk"
           cp app/build/outputs/bundle/liteRelease/*.aab "out/Highbridge-$v-play.aab"
           rm -f "$RUNNER_TEMP/release.jks"
       - uses: actions/upload-artifact@v4
         with: { name: highbridge-release, path: out/ }
-      - name: Draft release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Attach to the release
+        if: github.event_name == 'release'
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: |
-          gh release create "$GITHUB_REF_NAME" --draft --title "Highbridge ${GITHUB_REF_NAME#v}" \
-            --notes-file "fastlane/metadata/android/en-US/changelogs/$(grep -o 'versionCode = [0-9]*' app/build.gradle.kts | grep -o '[0-9]*').txt" \
-            out/*.apk
+        run: gh release upload "${{ github.event.release.tag_name }}" out/*.apk --clobber

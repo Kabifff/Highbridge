@@ -10,11 +10,11 @@ One version number covers both editions. For each release:
    ./gradlew assembleFullRelease   # GitHub: app/build/outputs/apk/full/release/app-full-release.apk
    ./gradlew assembleLiteRelease   # optional GitHub download of the lite edition
    ```
-4. Commit, then tag `v<versionName>` (for example `v0.2.0`) on that commit and push the tag.
-   F-Droid builds from these tags automatically once the app is listed.
-5. Make a GitHub release from the tag and attach the full APK (and the lite APK if you like).
-   GitHub adds the source code archives that the GPL asks for.
-6. Upload the `.aab` to Google Play.
+4. Commit and push. On GitHub, draft a new release with a new tag `v<versionName>` (for example
+   `v0.2.0`) and publish it. The Release workflow builds the signed full and lite APKs and attaches
+   them; GitHub adds the source code archives the GPL asks for. F-Droid builds from these tags.
+5. For Google Play, run the Release workflow by hand (Actions › Release › Run workflow) and
+   download the `.aab` from the run's artifact, or build it locally with `bundleLiteRelease`.
 
 Store screenshots and graphics are drawn from the real app:
 ```
