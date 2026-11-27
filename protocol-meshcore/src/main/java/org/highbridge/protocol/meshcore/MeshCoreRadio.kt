@@ -142,9 +142,13 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
             MC.RESP_DEVICE_INFO -> MC.parseDeviceInfo(f)?.let { _device.value = "MeshCore ${it.version} · ${it.manufacturer}".trim(); maxChannels = it.maxChannels.coerceIn(1, 64) }
             MC.RESP_CONTACTS_START -> contactBuffer = mutableMapOf()
             MC.RESP_CONTACT, MC.PUSH_NEW_ADVERT -> MC.parseContact(f)?.let { c ->
-                if (code == MC.RESP_CONTACT) contactBuffer[c.prefixHex] = c else { _contacts.value = _contacts.value + (c.prefixHex to c); publishNodes() }
+                if (code == MC.RESP_CONTACT) contactBuffer[c.prefixHex] = c else { noteAdvert(c.prefixHex, c); _contacts.value = _contacts.value + (c.prefixHex to c); publishNodes() }
             }
-            MC.RESP_END_OF_CONTACTS -> { _contacts.value = contactBuffer.toMap(); publishNodes() }
+            MC.RESP_END_OF_CONTACTS -> {
+                _contacts.value = contactBuffer.toMap(); savedPrefixes = contactBuffer.keys.toSet(); publishNodes()
+                // Fill in names for adverts that arrived as a bare key.
+                _discovered.value = _discovered.value.mapValues { (k, d) -> if (d.contact == null) d.copy(contact = contactBuffer[k]) else d }
+            }
             MC.RESP_CONTACT_MSG_RECV, MC.RESP_CONTACT_MSG_RECV_V3, MC.RESP_CHANNEL_MSG_RECV, MC.RESP_CHANNEL_MSG_RECV_V3 -> MC.parseMessage(f)?.let { onMessage(it) }
             MC.RESP_CHANNEL_DATA_RECV -> MC.parseChannelData(f)?.let { d ->
                 if (d.dataType == MC.DATA_TYPE_HIGHBRIDGE)
@@ -171,7 +175,10 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
                 val ack = ByteBuffer.wrap(f, 1, 4).order(ByteOrder.LITTLE_ENDIAN).int
                 synchronized(ackToPacket) { ackToPacket.remove(ack) }?.let { _events.emit(RadioEvent.Ack(protocol, it, true)) }
             }
-            MC.PUSH_ADVERT, MC.PUSH_PATH_UPDATED -> scope.launch { runCatching { refreshContacts() } }
+            MC.PUSH_ADVERT, MC.PUSH_PATH_UPDATED -> {
+                if (code == MC.PUSH_ADVERT && f.size >= 7) noteAdvert(MC.hex(f.copyOfRange(1, 7)), null)
+                scope.launch { runCatching { refreshContacts() } }
+            }
             MC.PUSH_LOGIN_SUCCESS, MC.PUSH_LOGIN_FAIL -> if (f.size >= 8) {
                 val who = MC.hex(f.copyOfRange(2, 8))
                 val ok = code == MC.PUSH_LOGIN_SUCCESS
@@ -208,8 +215,12 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
             val contact = _contacts.value[prefix]
             when (m.txtType) {
                 MC.TXT_CLI_DATA -> _events.emit(RadioEvent.AdminReply(protocol, prefix, m.text))
-                else -> _incoming.emit(MeshPacket("mc-$prefix-${m.timestamp}", protocol, prefix, contact?.name ?: prefix.take(4),
-                    _myId.value ?: "me", 0, MeshPayload.Text(m.text), now))
+                else -> {
+                    // Room server posts are signed with the author's 4-byte key prefix: show who wrote them.
+                    val author = m.authorPrefixHex?.let { a -> _contacts.value.values.firstOrNull { MC.hex(it.publicKey).startsWith(a) }?.name ?: "@$a" }
+                    val name = if (author != null) "$author · ${contact?.name ?: "room"}" else contact?.name ?: prefix.take(4)
+                    _incoming.emit(MeshPacket("mc-$prefix-${m.timestamp}-${m.authorPrefixHex ?: ""}", protocol, prefix, name, _myId.value ?: "me", 0, MeshPayload.Text(m.text), now))
+                }
             }
             _events.emit(RadioEvent.Heard(protocol, prefix, m.snr, null, m.pathLen.takeIf { it != 0xFF }))
         }
@@ -345,6 +356,83 @@ class MeshCoreRadio(private val link: MeshCoreLink) : MeshRadio {
         val c = contact(id) ?: error("Unknown contact")
         val r = command(MC.telemetryRequest(c.publicKey))
         check(r[0].toInt() == MC.RESP_SENT || r[0].toInt() == MC.RESP_OK) { "Radio refused" }
+    }
+
+    /**
+     * Region scope (firmware 1.10+): flood packets you send carry this region's transport code, so repeaters
+     * configured with regions keep them inside it. The key is the first 16 bytes of SHA-256 of "#" + name.
+     * Null or blank clears it (classic, unscoped flooding).
+     */
+    suspend fun setRegionScope(region: String?): Result<Unit> = runCatching {
+        val bare = region?.trim()?.removePrefix("#").orEmpty()
+        val frame = if (bare.isEmpty()) byteArrayOf(MC.CMD_SET_FLOOD_SCOPE.toByte(), 0)
+            else byteArrayOf(MC.CMD_SET_FLOOD_SCOPE.toByte(), 0) + MC.regionKey(bare)
+        val r = command(frame)
+        check(r[0].toInt() == MC.RESP_OK) { "This radio's firmware doesn't support regions yet (needs 1.10 or newer)" }
+    }
+
+    // ------------------------------------------------------------------ discover
+
+    /** An advert heard recently, whether or not the radio has saved it as a contact. */
+    data class Discovered(val prefixHex: String, val contact: MC.Contact?, val heardMs: Long)
+    private val _discovered = MutableStateFlow<Map<String, Discovered>>(emptyMap())
+    /** Adverts heard since connecting, newest first when sorted by heardMs (the Discover screen). */
+    val discovered: StateFlow<Map<String, Discovered>> = _discovered
+
+    private fun noteAdvert(prefix: String, c: MC.Contact?) {
+        val old = _discovered.value[prefix]
+        _discovered.value = (_discovered.value + (prefix to Discovered(prefix, c ?: old?.contact ?: _contacts.value[prefix], System.currentTimeMillis())))
+            .entries.sortedByDescending { it.value.heardMs }.take(200).associate { it.key to it.value }
+    }
+
+    /** True if the radio has this advert saved as a contact (from the last contact sync). */
+    fun isSaved(prefix: String) = savedPrefixes.contains(prefix)
+    @Volatile private var savedPrefixes: Set<String> = emptySet()
+
+    /** Saves a discovered advert to the radio's contacts. */
+    suspend fun addDiscovered(prefix: String): Result<String> = runCatching {
+        val c = _discovered.value[prefix]?.contact ?: _contacts.value[prefix] ?: error("Wait for its next advert; only its key prefix is known so far")
+        val r = command(MC.updateContactPath(c, c.directPath))
+        check(r[0].toInt() == MC.RESP_OK) { "Radio refused the contact (its contact list may be full)" }
+        refreshContacts()
+        c.name
+    }
+
+    // ------------------------------------------------------------------ config backup
+
+    /** Name, radio settings, power and channels as JSON, to back up or copy to another radio. [region] is the app's flood scope. */
+    fun exportConfig(region: String?): String {
+        val me = selfInfo.value ?: error("Not connected yet")
+        val o = org.json.JSONObject().put("format", "highbridge-meshcore-config").put("v", 1)
+            .put("name", me.name).put("freq_khz", me.freqKhz).put("bw_hz", me.bwHz).put("sf", me.sf).put("cr", me.cr).put("tx_power_dbm", me.txPower)
+        if (me.lat != 0.0 || me.lon != 0.0) o.put("lat", me.lat).put("lon", me.lon)
+        if (!region.isNullOrBlank()) o.put("region", region)
+        val chans = org.json.JSONArray()
+        synchronized(channelInfo) { channelInfo.values.filter { it.name.isNotBlank() } }.forEach { c ->
+            chans.put(org.json.JSONObject().put("idx", c.idx).put("name", c.name).put("secret_hex", MC.hex(c.secret)))
+        }
+        return o.put("channels", chans).toString(2)
+    }
+
+    /** Applies a config made by [exportConfig]. Returns the region it named, if any, so the app can apply that too. */
+    suspend fun importConfig(json: String, includePosition: Boolean = false): Result<String?> = runCatching {
+        val o = org.json.JSONObject(json)
+        require(o.optString("format") == "highbridge-meshcore-config") { "That isn't a Highbridge MeshCore config file" }
+        o.optString("name").takeIf { it.isNotBlank() }?.let { command(MC.setAdvertName(it)) }
+        if (o.has("freq_khz")) {
+            val r = command(MC.setRadio(o.getInt("freq_khz"), o.getInt("bw_hz"), o.getInt("sf"), o.getInt("cr")))
+            check(r[0].toInt() == MC.RESP_OK) { "Radio refused the radio settings" }
+        }
+        if (o.has("tx_power_dbm")) command(MC.setTxPower(o.getInt("tx_power_dbm")))
+        if (includePosition && o.has("lat")) command(MC.setLatLon(o.getDouble("lat"), o.getDouble("lon")))
+        val chans = o.optJSONArray("channels") ?: org.json.JSONArray()
+        for (i in 0 until chans.length()) {
+            val c = chans.getJSONObject(i)
+            val idx = c.getInt("idx"); if (idx >= maxChannels) continue
+            command(MC.setChannel(idx, c.getString("name"), MC.unhex(c.getString("secret_hex"))))
+        }
+        refreshChannels()
+        o.optString("region").takeIf { it.isNotBlank() }
     }
 
     /** Your own contact as a link the MeshCore app and Highbridge can import. */

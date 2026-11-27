@@ -226,6 +226,34 @@ fun everything() = runBlocking {
     delay(300)
     check("Media: 500 bytes -> 4 chunks, NACK resends chunk 1", nChunks == 4 && sentBins.size == 5 && sentBins[4].contentEquals(sentBins[1]))
 
+    // MQTT 3.1.1 framing used by the client proxy
+    val mq = org.highbridge.protocol.meshtastic.MqttProxy.packet(0x30, org.highbridge.protocol.meshtastic.MqttProxy.utf8("msh/x") + byteArrayOf(1, 2))
+    check("MQTT: PUBLISH header, length, topic", mq[0] == 0x30.toByte() && mq[1] == 9.toByte() && mq[2] == 0.toByte() && mq[3] == 5.toByte() && String(mq, 4, 5) == "msh/x")
+    val big = org.highbridge.protocol.meshtastic.MqttProxy.packet(0x30, ByteArray(200))
+    check("MQTT: remaining length over 127 uses two bytes", big[1] == (0x80 or (200 and 0x7F)).toByte() && big[2] == 1.toByte() && big.size == 203)
+    // MeshCore region scope key = first 16 bytes of sha256("#" + name)
+    val rk = org.highbridge.protocol.meshcore.MC.regionKey("twincities")
+    check("MeshCore region key", rk.size == 16 && rk.contentEquals(java.security.MessageDigest.getInstance("SHA-256").digest("#twincities".toByteArray()).copyOf(16)))
+    // Coverage prediction
+    val lb = org.highbridge.app.pro.LinkBudget
+    val budgetTerrain = org.highbridge.app.pro.LinkBudget.Terrain.SUBURBAN
+    check("LoRa sensitivity SF11/250k about -131.5 dBm", kotlin.math.abs(lb.sensitivityDbm(11, 250_000.0) - (-131.5)) < 0.6)
+    check("Radio horizon 10 m + 2 m about 18.9 km", kotlin.math.abs(lb.horizonKm(10.0, 2.0) - 18.9) < 0.2)
+    val predicted = lb.predict(22.0, 3.0, 2.0, 1.0, 11, 250_000.0, 915.0, 10.0, 1.5, budgetTerrain)
+    check("Prediction: suburban range is a few km and below free space", predicted.rangeKm in 1.0..15.0 && predicted.pathLossRangeKm < predicted.freeSpaceKm)
+    // Geo destination round trip
+    val dst = org.highbridge.app.pro.Geo.destination(44.95, -93.1, 90.0, 1000.0)
+    check("Geo: 1 km east and back", kotlin.math.abs(org.highbridge.app.pro.Geo.distanceM(44.95, -93.1, dst.first, dst.second) - 1000) < 1 &&
+        kotlin.math.abs(org.highbridge.app.pro.Geo.bearingDeg(44.95, -93.1, dst.first, dst.second) - 90) < 0.1)
+    check("Elevation difference text", org.highbridge.app.ui.screens.elevationLine(250.0, 200.0, true) == "50 m above you" &&
+        org.highbridge.app.ui.screens.elevationLine(190.0, 200.0, false) == "32 ft below you")
+    // Translations fall back to English and keep format placeholders
+    check("I18n: every Spanish and Norwegian entry keeps its % placeholders", org.highbridge.app.ui.I18n.es.all { (k, v) -> Regex("%[.0-9]*[a-z%]").findAll(k).count() == Regex("%[.0-9]*[a-z%]").findAll(v).count() } &&
+        org.highbridge.app.ui.I18n.nb.all { (k, v) -> Regex("%[.0-9]*[a-z%]").findAll(k).count() == Regex("%[.0-9]*[a-z%]").findAll(v).count() })
+    // Meshtastic profile round trip
+    val prof = org.meshtastic.proto.DeviceProfile(long_name = "Test", config = org.meshtastic.proto.LocalConfig(lora = org.meshtastic.proto.Config.LoRaConfig(hop_limit = 5))).encode()
+    check("Meshtastic DeviceProfile encodes and decodes", org.meshtastic.proto.DeviceProfile.ADAPTER.decode(prof).config?.lora?.hop_limit == 5)
+
     coroutineContext.cancelChildren()
     println(if (fails == 0) "ALL PASSED" else "$fails FAILED")
     org.junit.Assert.assertEquals(0, fails)

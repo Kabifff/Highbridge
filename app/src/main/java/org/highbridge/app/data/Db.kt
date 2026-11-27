@@ -131,11 +131,13 @@ data class ConversationRow(val conversation: String, val protocol: String, val l
 @Dao
 interface MeshDao {
     @Insert suspend fun insertMessage(m: MessageEntity): Long
+    @Query("UPDATE messages SET text = :text, mediaPath = :path, timeMs = :timeMs WHERE packetId = :packetId") suspend fun updateMedia(packetId: String, text: String, path: String, timeMs: Long)
     @Query("UPDATE messages SET status = :status WHERE packetId = :packetId AND outgoing = 1") suspend fun setStatus(packetId: String, status: Int)
     @Query("UPDATE messages SET packetId = :newId, status = :status WHERE rowId = :rowId") suspend fun setSent(rowId: Long, newId: String, status: Int)
     @Query("SELECT * FROM messages WHERE conversation = :c ORDER BY timeMs ASC") fun messages(c: String): Flow<List<MessageEntity>>
     @Query("SELECT COUNT(*) FROM messages WHERE packetId = :packetId AND protocol = :protocol") suspend fun countPacket(packetId: String, protocol: String): Int
     @Query("UPDATE messages SET read = 1 WHERE conversation = :c") suspend fun markRead(c: String)
+    @Query("SELECT COUNT(*) FROM messages WHERE read = 0") fun unreadCount(): Flow<Int>
     @Query("""SELECT m.conversation AS conversation, m.protocol AS protocol, m.text AS lastText, m.fromName AS lastFrom, m.timeMs AS lastTime,
               (SELECT COUNT(*) FROM messages u WHERE u.conversation = m.conversation AND u.read = 0) AS unread
               FROM messages m WHERE m.timeMs = (SELECT MAX(timeMs) FROM messages x WHERE x.conversation = m.conversation)

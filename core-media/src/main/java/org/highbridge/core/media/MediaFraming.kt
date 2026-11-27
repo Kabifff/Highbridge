@@ -19,7 +19,9 @@ import kotlin.random.Random
  */
 
 enum class MediaType(val code: Byte) {
-    IMAGE_WEBP(0x01), VOICE_CODEC2(0x02), BINARY_FILE(0x03);
+    IMAGE_WEBP(0x01), VOICE_CODEC2(0x02), BINARY_FILE(0x03),
+    /** One second of push-to-talk audio, played as soon as it arrives: [mode, session, seq] + Codec2 700C. */
+    VOICE_LIVE(0x04);
     companion object { fun fromCode(code: Byte) = entries.firstOrNull { it.code == code } }
 }
 

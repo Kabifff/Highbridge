@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import org.highbridge.app.ui.toast
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
@@ -76,7 +78,7 @@ fun UsbScreen() {
     val nav = LocalNav.current
     var tab by remember { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize().imePadding()) {
-        HbHeader("USB-C & flashing", "Terminal, firmware flashers and Bluetooth DFU", onBack = { nav.popBackStack() })
+        HbHeader(tr("USB-C & flashing"), tr("Terminal, firmware flashers and Bluetooth DFU"), onBack = { nav.popBackStack() })
         TabRow(tab, containerColor = MaterialTheme.colorScheme.background) {
             listOf("Terminal", "Flash firmware", "Bluetooth DFU").forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) }
         }
@@ -138,8 +140,8 @@ private fun TerminalTab() {
             items(lines) { Text(it, color = if (it.startsWith(">")) StPaulMeshPalette.NightAmber else StPaulMeshPalette.NightFg, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
         }
         Row(Modifier.padding(8.dp)) {
-            OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text("type help") }, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace))
-            TextButton(onClick = { val c = input; input = ""; scope.launch { run(c) } }) { Text("Run") }
+            OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text(tr("type help")) }, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace))
+            TextButton(onClick = { val c = input; input = ""; scope.launch { run(c) } }) { Text(tr("Run")) }
         }
     }
 }
@@ -182,22 +184,22 @@ private fun FlashTab() {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         HbCard {
-            Text("1. Choose firmware", fontWeight = FontWeight.Bold)
-            Text("Get it from Firmware updates in the menu, or from flasher.meshtastic.org, flasher.meshcore.io or the RNode releases.", fontSize = 12.sp)
+            Text(tr("1. Choose firmware"), fontWeight = FontWeight.Bold)
+            Text(tr("Get it from Firmware updates in the menu, or from flasher.meshtastic.org, flasher.meshcore.io or the RNode releases."), fontSize = 12.sp)
             OutlinedButton(onClick = { pick.launch(arrayOf("*/*")) }) { Text(file?.first ?: "Pick a .bin or .uf2 file") }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("ESP32", "UF2").forEach { k -> FilterChip(kind == k, { kind = k }, { Text(if (k == "UF2") "nRF52 (.uf2)" else "ESP32 (.bin)") }) } }
             file?.takeIf { kind == "UF2" }?.let { f -> runCatching { Uf2Flasher.validate(f.second) }.fold({ Text("Valid UF2 · ${it.blocks} blocks · ${Uf2Flasher.familyName(it.familyId)}", fontSize = 12.sp) }, { Text(it.message ?: "Invalid", color = StPaulMeshPalette.Danger, fontSize = 12.sp) }) }
         }
         HbCard {
-            Text("2. Plug in the radio", fontWeight = FontWeight.Bold)
-            if (drivers.isEmpty()) Text("No USB serial device found.", fontSize = 12.sp)
+            Text(tr("2. Plug in the radio"), fontWeight = FontWeight.Bold)
+            if (drivers.isEmpty()) Text(tr("No USB serial device found."), fontSize = 12.sp)
             drivers.forEach { d -> Text(UsbDevices.describe(d.device), fontSize = 13.sp) }
-            TextButton(onClick = { drivers = UsbDevices.drivers(usb) }) { Text("Refresh") }
+            TextButton(onClick = { drivers = UsbDevices.drivers(usb) }) { Text(tr("Refresh")) }
         }
         HbCard {
-            Text("3. Flash", fontWeight = FontWeight.Bold)
+            Text(tr("3. Flash"), fontWeight = FontWeight.Bold)
             if (kind == "ESP32") {
-                OutlinedTextField(offset, { offset = it }, Modifier.fillMaxWidth(), label = { Text("Flash offset (0x0 for factory/merged images, 0x10000 for app updates)") }, singleLine = true)
+                OutlinedTextField(offset, { offset = it }, Modifier.fillMaxWidth(), label = { Text(tr("Flash offset (0x0 for factory/merged images, 0x10000 for app updates)")) }, singleLine = true)
                 Button(enabled = !busy && file != null && drivers.isNotEmpty(), onClick = {
                     val d = drivers.first(); val f = file!!
                     busy = true; progress = 0f
@@ -217,17 +219,17 @@ private fun FlashTab() {
                         }
                         busy = false
                     }
-                }) { Text("Flash ESP32") }
+                }) { Text(tr("Flash ESP32")) }
             } else {
-                Text("This restarts the board into its bootloader drive. Then pick the drive (often called RAK4631, TECHOBOOT or similar) in the folder picker.", fontSize = 12.sp)
+                Text(tr("This restarts the board into its bootloader drive. Then pick the drive (often called RAK4631, TECHOBOOT or similar) in the folder picker."), fontSize = 12.sp)
                 Button(enabled = !busy && file != null, onClick = {
                     scope.launch {
                         drivers.firstOrNull()?.let { d -> if (requestUsbPermission(ctx, d.device)) runCatching { Uf2Flasher.touch1200(usb, d) }.onSuccess { log.add("Sent 1200-baud reset; wait for the drive to appear") } }
                         kotlinx.coroutines.delay(2500)
                         pickDrive.launch(null)
                     }
-                }) { Text("Reboot to bootloader and copy") }
-                TextButton(onClick = { pickDrive.launch(null) }, enabled = file != null) { Text("The drive is already showing") }
+                }) { Text(tr("Reboot to bootloader and copy")) }
+                TextButton(onClick = { pickDrive.launch(null) }, enabled = file != null) { Text(tr("The drive is already showing")) }
             }
             if (progress > 0f) LinearProgressIndicator(progress = { progress }, Modifier.fillMaxWidth())
         }
@@ -245,13 +247,13 @@ private fun DfuTab() {
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { zip = it }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Update nRF52 radios (RAK4631, T-Echo, T114) over Bluetooth with the firmware's \"ota.zip\". On Meshtastic, run \"mt dfu\" in the Terminal first.", style = MaterialTheme.typography.bodyMedium)
-        OutlinedTextField(address, { address = it.uppercase() }, Modifier.fillMaxWidth(), label = { Text("Bluetooth address") }, singleLine = true)
+        OutlinedTextField(address, { address = it.uppercase() }, Modifier.fillMaxWidth(), label = { Text(tr("Bluetooth address")) }, singleLine = true)
         bonded.forEach { d -> TextButton(onClick = { address = d.address }) { Text("${d.name ?: "Device"} · ${d.address}") } }
         OutlinedButton(onClick = { pick.launch(arrayOf("application/zip", "application/octet-stream")) }) { Text(zip?.lastPathSegment ?: "Pick firmware .zip") }
         Button(enabled = address.length == 17 && zip != null, onClick = {
             BleDfu.start(ctx, address, null, zip!!)
-            ctx.toast("Update started; progress is in the notification", long = true)
-        }) { Text("Start Bluetooth update") }
+            ctx.toast(tr("Update started; progress is in the notification"), long = true)
+        }) { Text(tr("Start Bluetooth update")) }
     }
 }
 
@@ -281,15 +283,15 @@ fun UpdatesScreen() {
     }
     fun openUrl(u: String) = ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(u)))
     LazyColumn(Modifier.fillMaxSize()) {
-        item { HbHeader("Firmware updates", "From each project's GitHub releases", onBack = { nav.popBackStack() }) }
+        item { HbHeader(tr("Firmware updates"), tr("From each project's GitHub releases"), onBack = { nav.popBackStack() }) }
         item {
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { UpdateChecker.PROJECTS.keys.forEach { p -> FilterChip(project == p, { project = p }, { Text(p) }) } }
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Include alpha / pre-releases", Modifier.weight(1f)); Switch(includePre, { includePre = it })
+                Text(tr("Include alpha / pre-releases"), Modifier.weight(1f)); Switch(includePre, { includePre = it })
             }
             installed?.let { Text("Your radio: $it", Modifier.padding(16.dp, 4.dp)) }
             OutlinedTextField(filter, { filter = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp), singleLine = true,
-                label = { Text("Board (filters the file list)") }, placeholder = { Text("e.g. heltec-v3, rak4631, t-echo") })
+                label = { Text(tr("Board (filters the file list)")) }, placeholder = { Text(tr("e.g. heltec-v3, rak4631, t-echo")) })
             UpdateChecker.WEB_FLASHERS[project]?.let { url -> TextButton(onClick = { openUrl(url) }, Modifier.padding(horizontal = 8.dp)) { Text("Open the $project web flasher") } }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
             error?.let { Text("Couldn't check: $it", Modifier.padding(16.dp), color = StPaulMeshPalette.Danger) }
@@ -321,14 +323,14 @@ fun UpdatesScreen() {
                     when {
                         list == null -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
                         list.isEmpty() -> Column {
-                            Text("No firmware files are attached to this release. Use the web flasher instead.", fontSize = 13.sp)
-                            UpdateChecker.WEB_FLASHERS[project]?.let { url -> TextButton(onClick = { openUrl(url) }) { Text("Open web flasher") } }
+                            Text(tr("No firmware files are attached to this release. Use the web flasher instead."), fontSize = 13.sp)
+                            UpdateChecker.WEB_FLASHERS[project]?.let { url -> TextButton(onClick = { openUrl(url) }) { Text(tr("Open web flasher")) } }
                         }
                         else -> {
                             val terms = filter.lowercase().split(Regex("[\\s,]+")).filter { it.isNotBlank() }
                             val shown = list.filter { a -> terms.isEmpty() || terms.all { a.name.lowercase().contains(it) } }
                             Text("${shown.size} of ${list.size} files${if (terms.isNotEmpty()) " match \"$filter\"" else ""}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (shown.isEmpty()) TextButton(onClick = { filter = "" }) { Text("Clear the board filter") }
+                            if (shown.isEmpty()) TextButton(onClick = { filter = "" }) { Text(tr("Clear the board filter")) }
                             shown.take(60).forEach { a ->
                                 TextButton(onClick = {
                                     scope.launch {
@@ -338,7 +340,7 @@ fun UpdatesScreen() {
                                     }
                                 }) { Text("${a.name} · ${a.sizeBytes / 1024} KB", fontSize = 12.sp) }
                             }
-                            if (shown.size > 60) Text("Type more of your board's name to narrow the list.", fontSize = 12.sp)
+                            if (shown.size > 60) Text(tr("Type more of your board's name to narrow the list."), fontSize = 12.sp)
                         }
                     }
                 }

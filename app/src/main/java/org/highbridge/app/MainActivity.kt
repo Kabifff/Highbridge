@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app
 
+import org.highbridge.app.ui.tr
+
 import org.highbridge.app.ui.toast
 import android.Manifest
 import android.content.Intent
@@ -100,6 +102,7 @@ class MainActivity : ComponentActivity() {
         i.getStringExtra("conversation")?.let { pendingRoute.value = "chat/${Uri.encode(it)}" }
         if (i.action == Intent.ACTION_VIEW && i.data?.scheme == "highbridge") pendingRoute.value = "channels?import=${Uri.encode(i.dataString)}"
         if (i.action == "android.hardware.usb.action.USB_DEVICE_ATTACHED") pendingRoute.value = "connect"
+        i.getStringExtra("route")?.let { pendingRoute.value = it }
     }
 
     override fun onResume() { super.onResume(); (application as HighbridgeApp).radios.foreground = true }
@@ -144,18 +147,18 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                     Text("West 7th · Saint Paul", Modifier.padding(horizontal = 20.dp), color = StPaulMeshPalette.SchmidtBrick, style = MaterialTheme.typography.labelMedium)
                     Gap(12)
                     fun go(r: String) { scope.launch { drawer.close() }; nav.navigate(r) }
-                    NavigationDrawerItem(label = { Text("Connect a radio") }, icon = { Icon(Icons.Filled.Bluetooth, null) }, selected = false, onClick = { go("connect") })
-                    NavigationDrawerItem(label = { Text("Channels & QR codes") }, icon = { Icon(Icons.Filled.Key, null) }, selected = false, onClick = { go("channels") })
-                    NavigationDrawerItem(label = { Text("Field tools") }, icon = { Icon(Icons.Filled.Build, null) }, selected = false, onClick = { go("tools") })
-                    NavigationDrawerItem(label = { Text("USB terminal & flashing") }, icon = { Icon(Icons.Filled.Usb, null) }, selected = false, onClick = { go("usb") })
-                    NavigationDrawerItem(label = { Text("Firmware updates") }, icon = { Icon(Icons.Filled.SettingsInputAntenna, null) }, selected = false, onClick = { go("updates") })
-                    NavigationDrawerItem(label = { Text("Settings") }, icon = { Icon(Icons.Filled.Settings, null) }, selected = false, onClick = { go("settings") })
+                    NavigationDrawerItem(label = { Text(tr("Connect a radio")) }, icon = { Icon(Icons.Filled.Bluetooth, null) }, selected = false, onClick = { go("connect") })
+                    NavigationDrawerItem(label = { Text(tr("Channels & QR codes")) }, icon = { Icon(Icons.Filled.Key, null) }, selected = false, onClick = { go("channels") })
+                    NavigationDrawerItem(label = { Text(tr("Field tools")) }, icon = { Icon(Icons.Filled.Build, null) }, selected = false, onClick = { go("tools") })
+                    NavigationDrawerItem(label = { Text(tr("USB terminal & flashing")) }, icon = { Icon(Icons.Filled.Usb, null) }, selected = false, onClick = { go("usb") })
+                    NavigationDrawerItem(label = { Text(tr("Firmware updates")) }, icon = { Icon(Icons.Filled.SettingsInputAntenna, null) }, selected = false, onClick = { go("updates") })
+                    NavigationDrawerItem(label = { Text(tr("Settings")) }, icon = { Icon(Icons.Filled.Settings, null) }, selected = false, onClick = { go("settings") })
                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
                     fun open(url: String) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
                     NavigationDrawerItem(label = { Text("stpaulmesh.com") }, selected = false, onClick = { open("https://stpaulmesh.com") })
-                    NavigationDrawerItem(label = { Text("Meshtastic docs") }, selected = false, onClick = { open("https://meshtastic.org/docs/") })
+                    NavigationDrawerItem(label = { Text(tr("Meshtastic docs")) }, selected = false, onClick = { open("https://meshtastic.org/docs/") })
                     NavigationDrawerItem(label = { Text("MeshCore") }, selected = false, onClick = { open("https://meshcore.io") })
-                    if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) NavigationDrawerItem(label = { Text("Reticulum manual") }, selected = false, onClick = { open("https://reticulum.network/manual/") })
+                    if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) NavigationDrawerItem(label = { Text(tr("Reticulum manual")) }, selected = false, onClick = { open("https://reticulum.network/manual/") })
                 }
             }
         }) {
@@ -165,7 +168,7 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                 if (onboarded && tabs.any { it.route == route }) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     tabs.forEach { t ->
                         NavigationBarItem(selected = route == t.route, onClick = { nav.navigate(t.route) { popUpTo("chats"); launchSingleTop = true } },
-                            icon = { Icon(t.icon, null) }, label = { Text(t.label) },
+                            icon = { Icon(t.icon, null) }, label = { Text(tr(t.label)) },
                             colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer))
                     }
                 }
@@ -202,8 +205,12 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                         composable("settings") { SettingsScreen() }
                         composable("licenses") { LicensesScreen() }
                         composable("mtsettings") { org.highbridge.app.ui.screens.MeshtasticSettingsScreen() }
+                        composable("mtremote/{n}") { b -> org.highbridge.app.ui.screens.MeshtasticSettingsScreen(Uri.decode(b.arguments?.getString("n") ?: "")) }
                         composable("wardrive") { org.highbridge.app.ui.screens.WardriveScreen() }
                         composable("search") { org.highbridge.app.ui.screens.SearchScreen() }
+                        composable("discover") { org.highbridge.app.ui.screens.DiscoverScreen() }
+                        composable("predict") { org.highbridge.app.ui.screens.CoveragePredictScreen() }
+                        composable("ar") { org.highbridge.app.ui.screens.ArScreen() }
                     }
                     // After NavHost, so a notification or link that opens the app never navigates before the graph exists.
                     LaunchedEffect(pendingRoute) { pendingRoute?.let { runCatching { nav.navigate(it) }; consumed() } }

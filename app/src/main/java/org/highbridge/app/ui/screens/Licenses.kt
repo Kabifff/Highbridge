@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,7 +46,7 @@ fun LicensesScreen() {
         return
     }
     LazyColumn(Modifier.fillMaxSize()) {
-        item { HbHeader("Open-source licenses", "Highbridge is free software under GPL-3.0-or-later", onBack = { nav.popBackStack() }) }
+        item { HbHeader(tr("Open-source licenses"), tr("Highbridge is free software under GPL-3.0-or-later"), onBack = { nav.popBackStack() }) }
         item {
             Text(LEGAL_NOTICE, Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
         }

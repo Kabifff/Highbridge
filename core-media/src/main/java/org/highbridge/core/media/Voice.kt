@@ -10,6 +10,7 @@ import android.media.AudioTrack
 import android.media.MediaRecorder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import kotlin.coroutines.coroutineContext
@@ -39,6 +40,57 @@ object VoiceIO {
             }
         } finally { rec.stop(); rec.release() }
         out.toShortArray()
+    }
+
+    /** Push-to-talk: hands over [blockSamples] of audio at a time while recording, until [stopWhen]. */
+    @SuppressLint("MissingPermission")
+    suspend fun stream(stopWhen: () -> Boolean, blockSamples: Int = SAMPLE_RATE, maxSeconds: Int = 120, onLevel: (Float) -> Unit = {},
+                       onBlock: suspend (ShortArray) -> Unit) = withContext(Dispatchers.IO) {
+        val min = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val rec = AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT, maxOf(min, blockSamples * 4))
+        check(rec.state == AudioRecord.STATE_INITIALIZED) { "Microphone not available" }
+        val block = ShortArray(blockSamples)
+        var fill = 0; var total = 0
+        val buf = ShortArray(320)
+        rec.startRecording()
+        try {
+            while (coroutineContext.isActive && !stopWhen() && total < SAMPLE_RATE * maxSeconds) {
+                val n = rec.read(buf, 0, buf.size)
+                if (n <= 0) continue
+                var peak = 0
+                for (i in 0 until n) {
+                    block[fill++] = buf[i]; peak = maxOf(peak, kotlin.math.abs(buf[i].toInt()))
+                    if (fill == blockSamples) { onBlock(block.copyOf()); fill = 0 }
+                }
+                total += n
+                onLevel(peak / 32768f)
+            }
+            if (fill > SAMPLE_RATE / 4) onBlock(block.copyOf(fill - fill % 320))
+        } finally { rec.stop(); rec.release() }
+    }
+
+    /** Plays live push-to-talk blocks one after another as they arrive, without gaps between them. */
+    class LivePlayer {
+        private val queue = kotlinx.coroutines.channels.Channel<ShortArray>(32)
+        private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+        init {
+            scope.launch {
+                var track: AudioTrack? = null
+                try {
+                    while (true) {
+                        val first = kotlinx.coroutines.withTimeoutOrNull(4_000) { queue.receive() }
+                        if (first == null) { track?.stop(); track?.release(); track = null; continue }
+                        val t = track ?: AudioTrack.Builder()
+                            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                            .setAudioFormat(AudioFormat.Builder().setSampleRate(SAMPLE_RATE).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                            .setTransferMode(AudioTrack.MODE_STREAM).setBufferSizeInBytes(SAMPLE_RATE * 4).build().also { it.play(); track = it }
+                        t.write(first, 0, first.size)
+                    }
+                } finally { track?.release() }
+            }
+        }
+        fun enqueue(pcm: ShortArray) { queue.trySend(pcm) }
     }
 
     suspend fun play(pcm: ShortArray) = withContext(Dispatchers.IO) {

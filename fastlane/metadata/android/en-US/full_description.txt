@@ -2,10 +2,10 @@
 
 <p><b>Chat and the bridge</b></p>
 <ul>
-<li>Channels and direct messages on Meshtastic and MeshCore radios, over Bluetooth or USB-C</li>
+<li>Channels and direct messages on Meshtastic and MeshCore radios, over Bluetooth, USB-C or Wi-Fi</li>
 <li>Bridge mode copies public channel messages from one mesh to the other, tagged with where they came from. Direct messages are never bridged, and loops are blocked</li>
-<li>Small photos and Codec2 voice notes sent in pieces, with automatic resend of missing pieces</li>
-<li>Replies, emoji reactions, quick replies, search, delivery receipts and notifications</li>
+<li>Small photos, Codec2 voice notes and live push-to-talk, with automatic resend of missing pieces</li>
+<li>Replies, emoji reactions, @mentions, quick replies, search, delivery receipts, per-chat alerts and replies from the notification or Android Auto</li>
 </ul>
 
 <p><b>Radios and regions</b></p>
@@ -14,7 +14,9 @@
 <li>Airtime meter that warns before you pass your region's legal limit</li>
 <li>Encrypted channels shared by QR code or link</li>
 <li>MeshCore repeater admin: login, status, remote commands and path editing</li>
-<li>USB terminal, UF2 and ESP32 flashing, nRF52 Bluetooth updates, and firmware release checks</li>
+<li>All Meshtastic settings and modules, remote admin of other nodes, .cfg profile backups, and the MQTT client proxy</li>
+<li>MeshCore Discover, regions and config backups</li>
+<li>USB terminal, UF2 and ESP32 flashing, ESP32 Wi-Fi and Bluetooth updates, nRF52 Bluetooth updates, and firmware release checks</li>
 </ul>
 
 <p><b>Field tools</b></p>
@@ -22,13 +24,16 @@
 <li>Offline-capable map of nodes, node list with signal and battery, compass to any node</li>
 <li>Wardriving: map where Meshtastic and MeshCore reach, shared to a live public coverage map</li>
 <li>Traceroute, topology graph, range test with a heatmap, and GPX track recording</li>
-<li>Shared map pins, satellite and topographic maps you can save for offline use</li>
+<li>Shared map pins, traceroutes on the map, and nine map views including satellite, hybrid and terrain</li>
+<li>AR camera view of nodes, pins and landmarks, with a pin drop straight ahead</li>
+<li>Coverage prediction from antenna height, power and gain</li>
 <li>One-tap check-in and SOS, geofence alerts, barometer forecast, Morse keyer, ATAK position bridge</li>
 <li>Power profiles that save battery, with an automatic switch at low battery</li>
 <li>Optional PIN lock and encrypted backups</li>
+<li>Home-screen widget; English, Spanish and Norwegian</li>
 </ul>
 
-<p>No accounts, no ads, no tracking. Messages travel radio to radio and never pass through a server. Wardriving coverage is shared only if you choose to.</p>
+<p>No accounts, no ads, no tracking. Messages travel radio to radio and never pass through a server, unless you turn on MQTT. Wardriving coverage is shared only if you choose to.</p>
 
 <p>This edition covers Meshtastic and MeshCore. A full edition that adds Reticulum (Sideband, MeshChat, NomadNet) is on the project's GitHub releases page.</p>
 

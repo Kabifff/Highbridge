@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import org.highbridge.app.ui.toast
 import android.net.Uri
 import androidx.compose.foundation.Canvas
@@ -76,13 +78,13 @@ fun NodesScreen() {
         .sortedWith(compareByDescending<org.highbridge.app.data.NodeEntity> { it.favorite }.thenByDescending { it.lastHeardMs })
 
     Column(Modifier.fillMaxSize()) {
-        HbHeader("Nodes", "${shown.size} heard in the last ${stale / 60} h")
+        HbHeader(tr("Nodes"), "${shown.size} heard in the last ${stale / 60} h")
         LazyRow(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { FilterChip(filter == null, { filter = null }, { Text("All") }) }
+            item { FilterChip(filter == null, { filter = null }, { Text(tr("All")) }) }
             items(supportedProtocols) { p -> FilterChip(filter == p, { filter = p }, { Text("${p.shortTag} ${nodes.count { it.protocol == p.name }}") }) }
-            item { FilterChip(showStale, { showStale = !showStale }, { Text("Include stale") }) }
-            item { FilterChip(favOnly, { favOnly = !favOnly }, { Text("Favorites") }) }
-            if (nodes.any { it.ignored }) item { FilterChip(showIgnored, { showIgnored = !showIgnored }, { Text("Ignored") }) }
+            item { FilterChip(showStale, { showStale = !showStale }, { Text(tr("Include stale")) }) }
+            item { FilterChip(favOnly, { favOnly = !favOnly }, { Text(tr("Favorites")) }) }
+            if (nodes.any { it.ignored }) item { FilterChip(showIgnored, { showIgnored = !showIgnored }, { Text(tr("Ignored")) }) }
         }
         if (shown.isEmpty()) EmptyState("No nodes yet", "Nodes appear as your radios hear them. Try sending an advert or a message.")
         LazyColumn {
@@ -106,6 +108,7 @@ fun NodesScreen() {
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 fun NodeDetailScreen(key: String) {
     val app = HighbridgeApp.instance
     val nav = LocalNav.current
@@ -117,7 +120,7 @@ fun NodeDetailScreen(key: String) {
     val routes by app.db.dao().routes().collectAsState(emptyList())
     val me by app.radios.myLocation.collectAsState()
     val metric by app.prefs.metric.collectAsState()
-    if (n == null) { HbHeader("Node", onBack = { nav.popBackStack() }); return }
+    if (n == null) { HbHeader(tr("Node"), onBack = { nav.popBackStack() }); return }
     val proto = ProtocolType.valueOf(n.protocol)
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -132,30 +135,33 @@ fun NodeDetailScreen(key: String) {
                 n.snr?.let { Text("SNR %.1f dB · RSSI ${n.rssi ?: "?"} dBm".format(it)) }
                 n.hops?.let { Text(if (it <= 0) "Heard directly" else "$it hops away") }
                 if (n.lat != null && n.lon != null) {
-                    Text("Position %.5f, %.5f".format(n.lat, n.lon))
+                    Text(tr("Position %.5f, %.5f").format(n.lat, n.lon))
                     me?.let { Text("${Geo.formatDistance(Geo.distanceM(it.first, it.second, n.lat, n.lon), metric)} · ${Geo.compassPoint(Geo.bearingDeg(it.first, it.second, n.lat, n.lon))}") }
                 }
                 n.altM?.let { Text("Altitude ${if (metric) "$it m" else "${(it * 3.281).toInt()} ft"}") }
+                val myAlt by app.radios.myAltitudeM.collectAsState()
+                elevationLine(n.altM?.toDouble(), myAlt, metric)?.let { Text(it) }
                 (n.battery ?: n.voltage)?.let { Text("Battery ${n.battery?.let { "$it%" } ?: ""} ${n.voltage?.let { "%.2f V".format(it) } ?: ""}") }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Ignore this node")
-                    Text("Hides it from lists and the map and drops its messages.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tr("Ignore this node"))
+                    Text(tr("Hides it from lists and the map and drops its messages."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 androidx.compose.material3.Switch(n.ignored, { v -> scope.launch { app.db.dao().setIgnored(key, v); if (proto == ProtocolType.MESHTASTIC) app.radios.meshtastic?.setIgnoredOnRadio(n.id, v) } })
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { nav.navigate("chat/${Uri.encode("${n.protocol}:dm:${n.id}")}") }) { Text("Message") }
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { nav.navigate("chat/${Uri.encode("${n.protocol}:dm:${n.id}")}") }) { Text(tr("Message")) }
                 OutlinedButton(onClick = { scope.launch { val r = app.radios.radio(proto)?.requestTraceroute(n.id); ctx.toast(r?.exceptionOrNull()?.message ?: "Traceroute sent") } }) { Text("Traceroute") }
+                if (proto == ProtocolType.MESHTASTIC) OutlinedButton(onClick = { nav.navigate("mtremote/${Uri.encode(n.id)}") }) { Text(tr("Admin")) }
                 if (proto == ProtocolType.MESHCORE) OutlinedButton(onClick = {
                     scope.launch { ctx.toast(app.radios.meshcore?.requestTelemetry(n.id)?.exceptionOrNull()?.message ?: "Asked for telemetry; the answer shows below when it arrives") }
-                }) { Text("Telemetry") }
-                if (n.lat != null) OutlinedButton(onClick = { nav.navigate("compass/${Uri.encode(key)}") }) { Text("Compass") }
+                }) { Text(tr("Telemetry")) }
+                if (n.lat != null) OutlinedButton(onClick = { nav.navigate("compass/${Uri.encode(key)}") }) { Text(tr("Compass")) }
             }
-            if (proto == ProtocolType.MESHCORE) OutlinedButton(onClick = { nav.navigate("repeater/${Uri.encode(n.id)}") }) { Text("Repeater admin & path") }
+            if (proto == ProtocolType.MESHCORE) OutlinedButton(onClick = { nav.navigate("repeater/${Uri.encode(n.id)}") }) { Text(tr("Repeater admin & path")) }
             if (telemetry.isNotEmpty()) {
-                SectionLabel("Telemetry", Modifier.padding(0.dp))
+                SectionLabel(tr("Telemetry"), Modifier.padding(0.dp))
                 TelemetryChart("Battery %", telemetry.mapNotNull { t -> t.battery?.takeIf { it <= 100 }?.let { t.timeMs to it.toFloat() } })
                 TelemetryChart("Voltage", telemetry.mapNotNull { t -> t.voltage?.let { t.timeMs to it } })
                 TelemetryChart("Channel use %", telemetry.mapNotNull { t -> t.channelUtil?.let { t.timeMs to it } })
@@ -163,7 +169,7 @@ fun NodeDetailScreen(key: String) {
             }
             val myRoutes = routes.filter { it.destId == n.id && it.protocol == n.protocol }.take(5)
             if (myRoutes.isNotEmpty()) {
-                SectionLabel("Traceroutes", Modifier.padding(0.dp))
+                SectionLabel(tr("Traceroutes"), Modifier.padding(0.dp))
                 myRoutes.forEach { r ->
                     Text("${timeAgo(r.timeMs)}: You → ${r.hops.split(',').filter { it.isNotBlank() }.joinToString(" → ").ifBlank { "direct" }} → ${n.shortName}" +
                         (if (r.snrs.isNotBlank()) "  (SNR ${r.snrs})" else ""), fontSize = 13.sp)
@@ -195,3 +201,11 @@ fun TelemetryChart(label: String, points: List<Pair<Long, Float>>) {
     }
 }
 
+
+/** "48 m above you" / "12 ft below you", or null without both altitudes. */
+fun elevationLine(nodeAltM: Double?, myAltM: Double?, metric: Boolean): String? {
+    if (nodeAltM == null || myAltM == null) return null
+    val d = nodeAltM - myAltM
+    val amount = if (metric) "${kotlin.math.abs(d).toInt()} m" else "${(kotlin.math.abs(d) * 3.281).toInt()} ft"
+    return when { kotlin.math.abs(d) < 2 -> "About level with you"; d > 0 -> "$amount above you"; else -> "$amount below you" }
+}

@@ -18,7 +18,7 @@ inside the app (Settings › Open-source licenses) and in `app/src/main/assets/l
 
 | Component | Version | License | Copyright | Where |
 |---|---|---|---|---|
-| Meshtastic protobufs | commit ae43c7c | GPL-3.0 | Meshtastic contributors | `protocol-meshtastic/src/main/proto` |
+| Meshtastic protobufs | commit ae43c7c (localonly and clientonly from master, November 2026) | GPL-3.0 | Meshtastic contributors | `protocol-meshtastic/src/main/proto` |
 | Codec2, speech codec subset | commit 310777b | LGPL-2.1 | David Rowe and contributors; Perens LLC (`pack.c`) | `core-media/src/main/cpp/codec2` |
 | KISS FFT, part of Codec2 | bundled with Codec2 | BSD-3-Clause | Mark Borgerding | `codec2/kiss_fft*.c`, `_kiss_fft_guts.h` |
 
@@ -34,6 +34,7 @@ The Codec2 files are unmodified copies from https://github.com/drowe67/codec2. T
 | osmdroid | 6.1.20 | Apache-2.0 | osmdroid contributors |
 | ZXing core | 3.5.3 | Apache-2.0 (see NOTICE) | ZXing authors |
 | zxing-android-embedded | 4.3.0 | Apache-2.0 | JourneyApps |
+| AndroidX CameraX (camera2, lifecycle, view) | 1.4.2 | Apache-2.0 | The Android Open Source Project |
 | usb-serial-for-android | 3.8.1 | MIT | Google Inc.; Mike Wakerly |
 | Nordic Android DFU Library | 2.5.0 | BSD-3-Clause | Nordic Semiconductor |
 | Chaquopy runtime (full edition only) | 17.2.0 | MIT | Chaquo Ltd and contributors |
@@ -67,3 +68,5 @@ Highbridge's own Reticulum glue code (`rns-python/src/main/python/highbridge_rns
 
 Map tiles and data © OpenStreetMap contributors, available under the Open Database License (ODbL).
 The topographic style uses OpenTopoMap (CC-BY-SA).
+USGS topo, imagery, shaded relief and hydrography tiles come from The National Map (U.S. Geological Survey), public domain.
+AR landmarks come from OpenStreetMap through the Overpass API (ODbL).

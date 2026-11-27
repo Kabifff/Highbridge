@@ -1,0 +1,9 @@
+- Connect over Wi-Fi; MQTT proxy through your phone
+- Wi-Fi/Bluetooth OTA updates for ESP32; remote admin
+- Live push-to-talk voice
+- @mentions, per-chat alerts, reply from notifications, Android Auto
+- Home-screen widget; Spanish and Norwegian
+- AR view: nodes, pins, landmarks; drop a pin ahead
+- Hybrid, terrain and water maps; traceroutes on the map
+- MeshCore Discover, regions, config backup
+- Meshtastic .cfg profiles; coverage prediction tool

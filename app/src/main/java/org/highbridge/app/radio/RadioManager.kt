@@ -100,6 +100,8 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     val airtimePercent: StateFlow<Float> = _airtimePct
 
     val myLocation = MutableStateFlow<Pair<Double, Double>?>(null)
+    /** Your GPS altitude in metres, when the phone reports one. */
+    val myAltitudeM = MutableStateFlow<Double?>(null)
     @Volatile var foreground = false
     @Volatile var openConversation: String? = null
 
@@ -116,6 +118,11 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         createNotificationChannels()
         scope.launch { media.completed.collect { onMediaComplete(it) } }
         scope.launch { prefs.region.collect { airtime.region = it } }
+        // Keep the home-screen widget current.
+        scope.launch {
+            kotlinx.coroutines.flow.combine(_radios, dao.unreadCount()) { r, u -> r.keys.map { it.shortTag } to u }
+                .collect { (names, unread) -> org.highbridge.app.widget.StatusWidget.update(ctx, names, unread) }
+        }
     }
 
     fun radio(p: ProtocolType) = _radios.value[p]
@@ -188,9 +195,26 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         return RNodeParams((centerMHz * 1_000_000).toLong(), 125_000, minOf(17, r.powerLimitDbm), 8, 5)
     }
 
+    /** A radio on your Wi-Fi network (Meshtastic port 4403, MeshCore Wi-Fi companion port 5000). */
+    suspend fun connectTcp(host: String, protocol: ProtocolType): Result<Unit> = runCatching {
+        require(protocol != ProtocolType.RETICULUM) { "For Reticulum over the network, add a TCP host in Settings" }
+        val (h, p) = host.trim().let { if (':' in it) it.substringBeforeLast(':') to it.substringAfterLast(':').toInt()
+            else it to if (protocol == ProtocolType.MESHCORE) org.highbridge.core.protocol.link.TcpStreamLink.MESHCORE_PORT else org.highbridge.core.protocol.link.TcpStreamLink.MESHTASTIC_PORT }
+        disconnect(protocol)
+        val link = org.highbridge.core.protocol.link.TcpStreamLink(h, p)
+        val radio: MeshRadio = if (protocol == ProtocolType.MESHCORE) MeshCoreRadio(MeshCoreLink(link, isSerial = true)) else MeshtasticRadio(MeshtasticSerialLink(link))
+        attach(radio).getOrThrow()
+        tcpHosts[protocol] = h
+        prefs.rememberDevice("TCP|${protocol.name}|$h:$p")
+    }
+
+    /** Host of a radio connected over the network, for Wi-Fi firmware updates. */
+    val tcpHosts = java.util.concurrent.ConcurrentHashMap<ProtocolType, String>()
+
     private suspend fun attach(radio: MeshRadio): Result<Unit> {
         val r = radio.connect("")
         if (r.isFailure) return r
+        if (radio is MeshCoreRadio && prefs.mcRegion.value.isNotBlank()) scope.launch { radio.setRegionScope(prefs.mcRegion.value) }
         _radios.value = _radios.value + (radio.protocol to radio)
         jobs[radio.protocol] = listOf(
             scope.launch { radio.incomingPackets.collect { runCatching { onPacket(it) } } },
@@ -252,6 +276,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
             if (_radios.value.containsKey(proto)) continue
             when (parts[0]) {
                 "BLE" -> bt?.let { runCatching { connectBle(it.getRemoteDevice(parts[2]), proto) } }
+                "TCP" -> runCatching { connectTcp(parts[2], proto) }
                 "USB" -> UsbDevices.drivers(usb).firstOrNull { "%04x:%04x".format(it.device.vendorId, it.device.productId) == parts[2] && usb.hasPermission(it.device) }
                     ?.let { runCatching { connectUsb(it) } }
             }
@@ -344,8 +369,51 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         }
     }
 
+    private val livePlayer by lazy { VoiceIO.LivePlayer() }
+    private val liveIn = java.util.concurrent.ConcurrentHashMap<String, MutableList<Short>>()
+
+    /** A live push-to-talk block: play it now, and keep the whole session as one voice message. */
+    private suspend fun onLiveVoice(m: MediaTransferManager.Incoming) {
+        if (m.data.size < 4) return
+        val mode = m.data[0].toInt(); val session = m.data[1].toInt() and 0xFF
+        val pcm = NativeCodec2(mode).use { it.decodeToPcm8k(m.data.copyOfRange(3, m.data.size)) }
+        val conv = conversationKey(m.protocol, m.channelIndex, m.toNodeId, m.senderId)
+        if (prefs.notifyLevel(conv) != "NONE") livePlayer.enqueue(pcm)
+        val key = "live-${m.senderId}-$session"
+        val all = liveIn.getOrPut(key) { mutableListOf() }
+        val first = all.isEmpty()
+        all.addAll(pcm.toList())
+        val f = File(File(ctx.filesDir, "media").apply { mkdirs() }, "$key.wav").apply { writeBytes(VoiceIO.toWav(all.toShortArray())) }
+        val label = "Live voice · ${all.size / VoiceIO.SAMPLE_RATE}s"
+        if (first) {
+            dao.insertMessage(MessageEntity(packetId = key, protocol = m.protocol.name, conversation = conv, fromId = m.senderId, fromName = m.senderName,
+                text = label, timeMs = System.currentTimeMillis(), outgoing = false, mediaType = MediaType.VOICE_CODEC2.name, mediaPath = f.absolutePath))
+            notifyMessage(conv, m.senderName, "Talking live…")
+        } else dao.updateMedia(key, label, f.absolutePath, System.currentTimeMillis())
+        if (liveIn.size > 20) liveIn.keys.take(liveIn.size - 20).forEach { liveIn.remove(it) }
+    }
+
+    /** Sends one second of push-to-talk audio. [session] groups the blocks of one transmission. */
+    suspend fun sendLiveBlock(conversation: String, session: Int, seq: Int, pcm: ShortArray): Result<Unit> = runCatching {
+        airtimeHold()?.let { throw it }
+        val t = parse(conversation)
+        val bits = NativeCodec2(NativeCodec2.MODE_700C).use { it.encodePcm8k(pcm) }
+        media.send(t.protocol, t.channel, t.toNodeId, MediaType.VOICE_LIVE, byteArrayOf(NativeCodec2.MODE_700C.toByte(), session.toByte(), seq.toByte()) + bits)
+    }
+
+    /** Keeps your side of a live transmission in the chat once you let go. */
+    suspend fun saveLiveSent(conversation: String, pcm: ShortArray) {
+        if (pcm.isEmpty()) return
+        val t = parse(conversation)
+        val f = File(File(ctx.filesDir, "media").apply { mkdirs() }, "live_sent_${System.currentTimeMillis()}.wav").apply { writeBytes(VoiceIO.toWav(pcm)) }
+        dao.insertMessage(MessageEntity(packetId = "media-live-${System.nanoTime()}", protocol = t.protocol.name, conversation = conversation, fromId = "me", fromName = "You",
+            text = "Live voice · ${pcm.size / VoiceIO.SAMPLE_RATE}s", timeMs = System.currentTimeMillis(), outgoing = true, status = 1,
+            mediaType = MediaType.VOICE_CODEC2.name, mediaPath = f.absolutePath))
+    }
+
     private suspend fun onMediaComplete(m: MediaTransferManager.Incoming) {
         val dir = File(ctx.filesDir, "media").apply { mkdirs() }
+        if (m.mediaType == MediaType.VOICE_LIVE) { onLiveVoice(m); return }
         val (file, label) = when (m.mediaType) {
             MediaType.IMAGE_WEBP -> File(dir, "img_${System.currentTimeMillis()}.webp").also { it.writeBytes(m.data) } to "Photo"
             MediaType.VOICE_CODEC2 -> {
@@ -354,6 +422,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
                 File(dir, "voice_${System.currentTimeMillis()}.wav").also { it.writeBytes(VoiceIO.toWav(pcm)) } to "Voice message · ${pcm.size / VoiceIO.SAMPLE_RATE}s"
             }
             MediaType.BINARY_FILE -> File(dir, "file_${System.currentTimeMillis()}.bin").also { it.writeBytes(m.data) } to "File"
+            MediaType.VOICE_LIVE -> return
         }
         val conv = conversationKey(m.protocol, m.channelIndex, m.toNodeId, m.senderId)
         dao.insertMessage(MessageEntity(packetId = "media-${file.name}", protocol = m.protocol.name, conversation = conv, fromId = m.senderId,
@@ -497,6 +566,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
 
     fun onLocation(lat: Double, lon: Double, alt: Double?) {
         myLocation.value = lat to lon
+        if (alt != null) myAltitudeM.value = alt
         scope.launch {
             recordingTrackId?.let { dao.insertTrackPoint(TrackPointEntity(trackId = it, lat = lat, lon = lon, altM = alt, timeMs = System.currentTimeMillis())) }
             if (prefs.shareLocation.value && shouldShare(lat, lon)) for (r in _radios.value.values) runCatching { r.sendPosition(lat, lon, alt?.toInt()) }
@@ -543,10 +613,27 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         nm.createNotificationChannel(NotificationChannel(CH_ALERTS, "Alerts (geofence, SOS)", NotificationManager.IMPORTANCE_HIGH))
     }
 
+    /** True if [text] mentions you: "@[Your name]" (MeshCore style) or "@yourname". */
+    fun mentionsMe(text: String): Boolean {
+        val names = (listOf(prefs.displayName.value) + _radios.value.values.mapNotNull { r -> (r as? MeshCoreRadio)?.selfInfo?.value?.name })
+            .filter { it.isNotBlank() }
+        return names.any { n -> text.contains("@[$n]", true) || Regex("@" + Regex.escape(n) + "\\b", RegexOption.IGNORE_CASE).containsMatchIn(text) }
+    }
+
+    private val recentByConv = java.util.concurrent.ConcurrentHashMap<String, MutableList<Pair<String, String>>>()
+
     private fun notifyMessage(conv: String, from: String, text: String) {
         val sos = SOS.containsMatchIn(text)
-        notify(if (sos) "SOS from $from" else from, text, conv.hashCode(), if (sos) CH_ALERTS else CH_MESSAGES, conv)
+        val level = prefs.notifyLevel(conv)
+        if (!sos && (level == "NONE" || (level == "MENTIONS" && !mentionsMe(text)))) return
+        if (sos) { notify("SOS from $from", text, conv.hashCode(), CH_ALERTS, conv); return }
+        // Messaging-style notification with Reply and Mark as read, which phones, watches and Android Auto all understand.
+        val lines = recentByConv.getOrPut(conv) { mutableListOf() }.apply { add(from to text); while (size > 6) removeAt(0) }
+        MessageNotifier.show(ctx, conv, lines.toList())
     }
+
+    /** Called when the person reads or answers a conversation. */
+    fun clearNotification(conv: String) { recentByConv.remove(conv); NotificationManagerCompat.from(ctx).cancel(conv.hashCode()) }
 
     @SuppressLint("MissingPermission")
     private fun notify(title: String, text: String, id: Int, channel: String = CH_ALERTS, conversation: String? = null) {

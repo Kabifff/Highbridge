@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
@@ -97,17 +99,17 @@ fun NewChatDialog(onDismiss: () -> Unit) {
                 NewChatMode.DIRECT -> DirectPicker(name, { name = it }) { conv -> open(conv) }
                 NewChatMode.PRIVATE -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { connected.forEach { p -> FilterChip(proto == p, { proto = p }, { Text(p.shortTag) }) } }
-                    OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Channel name") }, singleLine = true)
+                    OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(tr("Channel name")) }, singleLine = true)
                     val err = name.trim().takeIf { it.isNotEmpty() }?.let { EncryptedChannel.validate(proto, EncryptedChannel.AUTO_SLOT, it) }
                     err?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                     Text("It goes in the next free slot on your ${proto.shortTag} radio. Only people you share the code with can read it.",
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 NewChatMode.HASHTAG -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Channel") }, singleLine = true,
+                    OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(tr("Channel")) }, singleLine = true,
                         prefix = { Text("#") }, placeholder = { Text("stpaul") })
                     if (name.isNotBlank()) Text("Joins ${EncryptedChannel.normalizeHashtag(name)}", fontSize = 12.sp)
-                    Text("Hashtag channels aren't private: anyone who knows the name can read them. Use a private channel for anything personal.",
+                    Text(tr("Hashtag channels aren't private: anyone who knows the name can read them. Use a private channel for anything personal."),
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -150,7 +152,7 @@ private fun DirectPicker(query: String, onQuery: (String) -> Unit, onPick: (Stri
             (query.isBlank() || n.longName.contains(query, true) || n.shortName.contains(query, true) || n.id.contains(query, true))
     }.sortedByDescending { it.lastHeardMs }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        OutlinedTextField(query, onQuery, Modifier.fillMaxWidth(), label = { Text("Search nodes") }, singleLine = true)
+        OutlinedTextField(query, onQuery, Modifier.fillMaxWidth(), label = { Text(tr("Search nodes")) }, singleLine = true)
         if (shown.isEmpty()) Text(if (nodes.isEmpty()) "No nodes heard yet. Leave your radio on for a few minutes." else "No match.",
             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn(Modifier.heightIn(max = 340.dp)) {
@@ -184,12 +186,12 @@ fun ChannelActions(protocol: ProtocolType, slot: Int, title: String) {
     if (share && entity != null) ChannelQrDialog(EncryptedChannel.fromEntity(entity)) { share = false }
     if (leave) AlertDialog(onDismissRequest = { leave = false },
         title = { Text("Leave $title?") },
-        text = { Text("This removes the channel from your radio and forgets its key. Your message history stays. You can rejoin later with its code.") },
+        text = { Text(tr("This removes the channel from your radio and forgets its key. Your message history stays. You can rejoin later with its code.")) },
         confirmButton = { TextButton(onClick = {
             leave = false
             scope.launch { app.radios.leaveChannel(protocol, slot).onSuccess { ctx.toast("Left $title"); nav.popBackStack() }.onFailure { ctx.toast(it.message, long = true) } }
-        }) { Text("Leave") } },
-        dismissButton = { TextButton(onClick = { leave = false }) { Text("Cancel") } })
+        }) { Text(tr("Leave")) } },
+        dismissButton = { TextButton(onClick = { leave = false }) { Text(tr("Cancel")) } })
 }
 
 /** QR code and share link for a channel. MeshCore channels also get a link the MeshCore app opens. */
@@ -201,8 +203,8 @@ fun ChannelQrDialog(c: EncryptedChannel, onDismiss: () -> Unit) {
     val bmp = remember(code) { BarcodeEncoder().encodeBitmap(code, BarcodeFormat.QR_CODE, 720, 720) }
     fun send(text: String) = ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share channel"))
     AlertDialog(onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-        dismissButton = { TextButton(onClick = { send(code) }) { Text("Share link") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done")) } },
+        dismissButton = { TextButton(onClick = { send(code) }) { Text(tr("Share link")) } },
         title = { Text(c.name) },
         text = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(bmp.asImageBitmap(), "Channel QR code", Modifier.size(260.dp))
@@ -228,11 +230,11 @@ fun SearchScreen() {
     Column {
         val ctx = LocalContext.current
         val scope = rememberCoroutineScope()
-        org.highbridge.app.ui.HbHeader("Search messages", "All networks", onBack = { nav.popBackStack() }, actions = {
-            TextButton(onClick = { scope.launch { exportMessagesCsv(ctx) } }) { Text("Export CSV") }
+        org.highbridge.app.ui.HbHeader(tr("Search messages"), tr("All networks"), onBack = { nav.popBackStack() }, actions = {
+            TextButton(onClick = { scope.launch { exportMessagesCsv(ctx) } }) { Text(tr("Export CSV")) }
         })
-        OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().padding(16.dp, 4.dp), label = { Text("Search") }, singleLine = true)
-        if (q.trim().length >= 2 && results.isEmpty()) Text("No messages match.", Modifier.padding(16.dp))
+        OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().padding(16.dp, 4.dp), label = { Text(tr("Search")) }, singleLine = true)
+        if (q.trim().length >= 2 && results.isEmpty()) Text(tr("No messages match."), Modifier.padding(16.dp))
         LazyColumn {
             items(results, key = { it.rowId }) { m ->
                 Column(Modifier.fillMaxWidth().clickable { nav.navigate("chat/${Uri.encode(m.conversation)}") }.padding(16.dp, 8.dp)) {

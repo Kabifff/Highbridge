@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import org.highbridge.app.ui.toast
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -111,14 +113,14 @@ fun RadioScreen() {
     }.filter { showAll || query.isNotBlank() || it.name in featured || it == region }
 
     LazyColumn(Modifier.fillMaxSize()) {
-        item { HbHeader("Radio & region", radios.values.joinToString(" · ") { it.deviceInfo.value ?: it.protocol.shortTag }.ifBlank { "No radio connected" }) }
+        item { HbHeader(tr("Radio & region"), radios.values.joinToString(" · ") { it.deviceInfo.value ?: it.protocol.shortTag }.ifBlank { "No radio connected" }) }
         item {
             Column(Modifier.padding(20.dp, 16.dp, 20.dp, 0.dp)) {
                 HbCard {
-                    Text(if (suggested != null) "Your phone says you're in ${Locale("", country).displayCountry}" else "Pick the band that's legal where you are",
+                    Text(if (suggested != null) "Your phone says you're in ${Locale("", country).displayCountry}" else tr("Pick the band that's legal where you are"),
                         fontWeight = FontWeight.Bold)
                     Text(if (suggested != null) "We suggest ${suggested.name} · ${suggested.bandLabel}. Pick a different region if you're traveling or near a border. Only use the band that's legal where your radio is."
-                        else "LoRa bands differ by country. Choose your region below.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        else tr("LoRa bands differ by country. Choose your region below."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (suggested != null) Button(onClick = { app.prefs.setRegion(suggested) }) { Text("Use ${suggested.name}") }
                         OutlinedButton(onClick = {
@@ -127,11 +129,11 @@ fun RadioScreen() {
                                 app.radios.meshtastic?.applyLoRa(StPaulQuickJoin.meshtastic)?.let { r -> ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "Meshtastic set to US · Medium Fast") }
                                 app.radios.meshcore?.applyPreset(StPaulQuickJoin.meshCore, 22)?.let { r -> ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "MeshCore set to USA / Canada") }
                             }
-                        }) { Text("Join Saint Paul Mesh") }
+                        }) { Text(tr("Join Saint Paul Mesh")) }
                     }
                 }
                 Gap(12)
-                OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search a country or frequency") }, singleLine = true)
+                OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = { Text(tr("Search a country or frequency")) }, singleLine = true)
             }
         }
         for ((label, names) in groups) {
@@ -157,22 +159,22 @@ fun RadioScreen() {
         item {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 HbCard {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHTASTIC); Text("Meshtastic radio settings", fontWeight = FontWeight.Bold) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHTASTIC); Text(tr("Meshtastic radio settings"), fontWeight = FontWeight.Bold) }
                     var open by remember { mutableStateOf(false) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Preset: ", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tr("Preset: "), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         TextButton(onClick = { open = true }) { Text(preset.label) }
                         DropdownMenu(open, { open = false }) { MeshtasticModemPreset.entries.forEach { p -> DropdownMenuItem({ Text(p.label) }, { preset = p; open = false }) } }
                     }
                     Text("Transmit power: ${if (power == 0) "region maximum (${region.powerLimitDbm} dBm)" else "$power dBm"}")
                     Slider(power.toFloat(), { power = it.toInt() }, valueRange = 0f..region.powerLimitDbm.toFloat().coerceAtLeast(1f))
-                    Text("Capped at your region's legal limit. Lower power saves battery.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tr("Capped at your region's legal limit. Lower power saves battery."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(enabled = radios.containsKey(ProtocolType.MESHTASTIC) && region != MeshtasticRegion.UNSET, onClick = {
                         scope.launch { app.radios.meshtastic?.applyLoRa(MeshtasticLoRaConfig(region, preset, 3, power))?.let { ctx.toast(long = true, message = it.exceptionOrNull()?.message ?: "Sent to the radio. It will restart.") } }
-                    }) { Text("Apply to Meshtastic radio") }
+                    }) { Text(tr("Apply to Meshtastic radio")) }
                 }
                 HbCard {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHCORE); Text("MeshCore radio preset", fontWeight = FontWeight.Bold) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHCORE); Text(tr("MeshCore radio preset"), fontWeight = FontWeight.Bold) }
                     var open by remember { mutableStateOf(false) }
                     TextButton(onClick = { open = true }) { Text(mcPreset.name + " · %.3f MHz".format(mcPreset.frequencyMHz)) }
                     DropdownMenu(open, { open = false }) { MeshCorePresets.ALL.forEach { p -> DropdownMenuItem({ Text("${p.name} · %.3f MHz".format(p.frequencyMHz)) }, { mcPreset = p; open = false }) } }
@@ -183,32 +185,45 @@ fun RadioScreen() {
                     Text("Transmit power: $mcPower dBm"); Slider(mcPower.toFloat(), { mcPower = it.toInt() }, valueRange = 1f..minOf(22, mcPreset.band.powerLimitDbm).toFloat())
                     Button(enabled = radios.containsKey(ProtocolType.MESHCORE) && problems.isEmpty(), onClick = {
                         scope.launch { app.radios.meshcore?.applyPreset(mcPreset, mcPower)?.let { ctx.toast(long = true, message = it.exceptionOrNull()?.message ?: "MeshCore radio updated") } }
-                    }) { Text("Apply to MeshCore radio") }
+                    }) { Text(tr("Apply to MeshCore radio")) }
                 }
                 if (radios.containsKey(ProtocolType.MESHTASTIC)) HbCard {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHTASTIC); Text("All Meshtastic settings", fontWeight = FontWeight.Bold) }
-                    Text("Role, position, power, MQTT, telemetry, modules, security, restart and reset.", fontSize = 12.sp)
-                    TextButton(onClick = { navRadio.navigate("mtsettings") }) { Text("Open settings") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHTASTIC); Text(tr("All Meshtastic settings"), fontWeight = FontWeight.Bold) }
+                    Text(tr("Role, position, power, MQTT, telemetry, modules, security, restart and reset."), fontSize = 12.sp)
+                    TextButton(onClick = { navRadio.navigate("mtsettings") }) { Text(tr("Open settings")) }
                 }
                 if (radios.containsKey(ProtocolType.MESHCORE)) HbCard {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHCORE); Text("Announce and share", fontWeight = FontWeight.Bold) }
-                    Text("An advert lets others add you as a contact. Zero-hop reaches radios in direct range only; flood goes across the mesh.", fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHCORE); Text(tr("Announce and share"), fontWeight = FontWeight.Bold) }
+                    Text(tr("An advert lets others add you as a contact. Zero-hop reaches radios in direct range only; flood goes across the mesh."), fontSize = 12.sp)
                     var showQr by remember { mutableStateOf(false) }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { scope.launch { ctx.toast(app.radios.meshcore?.advertise(false)?.exceptionOrNull()?.message ?: "Zero-hop advert sent") } }) { Text("Zero-hop") }
-                        OutlinedButton(onClick = { scope.launch { ctx.toast(app.radios.meshcore?.advertise(true)?.exceptionOrNull()?.message ?: "Flood advert sent") } }) { Text("Flood") }
-                        TextButton(onClick = { showQr = true }) { Text("My QR") }
+                        OutlinedButton(onClick = { scope.launch { ctx.toast(app.radios.meshcore?.advertise(false)?.exceptionOrNull()?.message ?: "Zero-hop advert sent") } }) { Text(tr("Zero-hop")) }
+                        OutlinedButton(onClick = { scope.launch { ctx.toast(app.radios.meshcore?.advertise(true)?.exceptionOrNull()?.message ?: "Flood advert sent") } }) { Text(tr("Flood")) }
+                        TextButton(onClick = { showQr = true }) { Text(tr("My QR")) }
                     }
+                    TextButton(onClick = { navRadio.navigate("discover") }) { Text(tr("Discover adverts heard nearby ›")) }
+                    // Region scope (flood scope): keeps your flood packets inside a region on meshes whose repeaters use regions.
+                    var region by remember { mutableStateOf(app.prefs.mcRegion.value) }
+                    Text(tr("Region scope"), fontWeight = FontWeight.Bold)
+                    Text(tr("On meshes that use regions (firmware 1.10+), repeaters only flood your packets inside this region. Leave blank for normal flooding."), fontSize = 12.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(region, { region = it.trim().take(30) }, Modifier.weight(1f), singleLine = true, placeholder = { Text(tr("e.g. #twincities")) })
+                        OutlinedButton(onClick = { scope.launch {
+                            app.radios.meshcore?.setRegionScope(region)?.fold({ app.prefs.setMcRegion(region); ctx.toast(if (region.isBlank()) "Region scope cleared" else "Flooding scoped to $region") },
+                                { ctx.toast(it.message, long = true) })
+                        } }) { Text(tr("Set")) }
+                    }
+                    McConfigBackup()
                     val link = app.radios.meshcore?.myContactUri()
                     if (showQr && link != null) androidx.compose.material3.AlertDialog(onDismissRequest = { showQr = false },
-                        title = { Text("Your MeshCore contact") },
+                        title = { Text(tr("Your MeshCore contact")) },
                         text = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             val bmp = remember(link) { com.journeyapps.barcodescanner.BarcodeEncoder().encodeBitmap(link, com.google.zxing.BarcodeFormat.QR_CODE, 640, 640) }
                             androidx.compose.foundation.Image(bmp.asImageBitmap(), "Contact QR code", Modifier.size(240.dp))
-                            Text("Others scan this in Highbridge (Channels › Scan) or the MeshCore app to add you.", fontSize = 12.sp)
+                            Text(tr("Others scan this in Highbridge (Channels › Scan) or the MeshCore app to add you."), fontSize = 12.sp)
                         } },
-                        confirmButton = { TextButton(onClick = { showQr = false }) { Text("Done") } },
-                        dismissButton = { TextButton(onClick = { ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, link), "Share contact")) }) { Text("Share link") } })
+                        confirmButton = { TextButton(onClick = { showQr = false }) { Text(tr("Done")) } },
+                        dismissButton = { TextButton(onClick = { ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, link), "Share contact")) }) { Text(tr("Share link")) } })
                 }
                 HbCard {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.RETICULUM); Text("RNode (Reticulum)", fontWeight = FontWeight.Bold) }
@@ -243,13 +258,13 @@ fun BridgeScreen() {
         BridgeMode.ALL_THREE -> setOf(ProtocolType.MESHTASTIC to ProtocolType.MESHCORE, ProtocolType.MESHCORE to ProtocolType.RETICULUM, ProtocolType.MESHTASTIC to ProtocolType.RETICULUM)
     }
     LazyColumn(Modifier.fillMaxSize()) {
-        item { HbHeader("The Bridge", "Carry public messages from one mesh to another") }
+        item { HbHeader(tr("The Bridge"), tr("Carry public messages from one mesh to another")) }
         item {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(if (enabled) "Bridge is on" else "Bridge is off", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
-                        Text("Keeps running in the background, even after a restart", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = .85f), fontSize = 12.sp)
+                        Text(tr("Keeps running in the background, even after a restart"), color = MaterialTheme.colorScheme.onPrimary.copy(alpha = .85f), fontSize = 12.sp)
                     }
                     Switch(enabled, { on ->
                         enabled = on
@@ -264,13 +279,13 @@ fun BridgeScreen() {
                         }
                     }
                 }
-                SectionLabel("Which networks", Modifier.padding(0.dp))
+                SectionLabel(tr("Which networks"), Modifier.padding(0.dp))
                 supportedBridgeModes.forEach { m ->
                     Row(Modifier.fillMaxWidth().clickable {
                         mode = m; BridgeModeStore.mode = m; engine?.setBridgeMode(m)
                     }, verticalAlignment = Alignment.CenterVertically) { RadioButton(mode == m, { mode = m; BridgeModeStore.mode = m; engine?.setBridgeMode(m) }); Text(m.label) }
                 }
-                SectionLabel("Safety rules", Modifier.padding(0.dp))
+                SectionLabel(tr("Safety rules"), Modifier.padding(0.dp))
                 Text("• Direct messages are never bridged\n• Messages are tagged with where they came from, like [MC]\n• Long messages are trimmed to fit the other network (160 bytes on MeshCore)\n• Echoes are stopped so nothing loops forever", style = MaterialTheme.typography.bodyMedium)
                 if (stats != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatBox("${stats.forwardedCount}", "relayed", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
@@ -305,27 +320,27 @@ fun ConnectScreen() {
     DisposableEffect(Unit) { runCatching { scanner.start() }; onDispose { scanner.stop() } }
 
     LazyColumn(Modifier.fillMaxSize()) {
-        item { HbHeader("Connect a radio", "Bluetooth, USB-C, or Reticulum over Wi-Fi", onBack = { nav.popBackStack() }) }
+        item { HbHeader(tr("Connect a radio"), tr("Bluetooth, USB-C, or Reticulum over Wi-Fi"), onBack = { nav.popBackStack() }) }
         if (radios.isNotEmpty()) {
-            item { SectionLabel("Connected") }
+            item { SectionLabel(tr("Connected")) }
             items(radios.values.toList()) { r ->
                 val st by r.connectionState.collectAsState()
                 val dev by r.deviceInfo.collectAsState()
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ProtocolBadge(r.protocol)
                     Column(Modifier.weight(1f)) { Text(dev ?: r.protocol.name, fontWeight = FontWeight.Bold); Text(if (st is ConnectionState.Connected) "Connected" else st.toString(), fontSize = 12.sp) }
-                    TextButton(onClick = { scope.launch { app.radios.disconnect(r.protocol) } }) { Text("Disconnect") }
+                    TextButton(onClick = { scope.launch { app.radios.disconnect(r.protocol) } }) { Text(tr("Disconnect")) }
                 }
             }
         }
         item { SectionLabel("Bluetooth") }
-        if (!scanner.bluetoothOn) item { Text("Turn on Bluetooth to find radios.", Modifier.padding(horizontal = 20.dp)) }
+        if (!scanner.bluetoothOn) item { Text(tr("Turn on Bluetooth to find radios."), Modifier.padding(horizontal = 20.dp)) }
         items(found, key = { it.device.address }) { f ->
             var pick by remember { mutableStateOf(false) }
             Row(Modifier.fillMaxWidth().clickable { pick = true }.padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 f.guess?.let { ProtocolBadge(it) }
                 Column(Modifier.weight(1f)) { Text(f.name, fontWeight = FontWeight.Bold); Text("${f.device.address} · ${f.rssi} dBm", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                if (busy == f.device.address) Text("Connecting…", fontSize = 12.sp)
+                if (busy == f.device.address) Text(tr("Connecting…"), fontSize = 12.sp)
                 DropdownMenu(pick, { pick = false }) {
                     supportedProtocols.forEach { p ->
                         DropdownMenuItem({ Text("Connect as ${p.name.lowercase().replaceFirstChar { it.uppercase() }}${if (p == ProtocolType.RETICULUM) " (RNode)" else ""}${if (p == f.guess) " ✓" else ""}") }, {
@@ -344,11 +359,11 @@ fun ConnectScreen() {
         }
         item {
             Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { scanner.stop(); scanner.start() }) { Text("Scan again") }
+                OutlinedButton(onClick = { scanner.stop(); scanner.start() }) { Text(tr("Scan again")) }
             }
         }
         item { SectionLabel("USB-C") }
-        if (usbList.isEmpty()) item { Text("Plug a radio into the phone's USB-C port with a data cable.", Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (usbList.isEmpty()) item { Text(tr("Plug a radio into the phone's USB-C port with a data cable."), Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(usbList) { d ->
             Row(Modifier.fillMaxWidth().clickable {
                 busy = d.device.deviceName
@@ -361,17 +376,39 @@ fun ConnectScreen() {
                     if (r.isSuccess) nav.popBackStack()
                 }
             }.padding(horizontal = 20.dp, vertical = 10.dp)) {
-                Column(Modifier.weight(1f)) { Text(UsbDevices.describe(d.device), fontWeight = FontWeight.Bold); Text("Tap to detect Meshtastic, MeshCore or RNode", fontSize = 12.sp) }
-                if (busy == d.device.deviceName) Text("Detecting…", fontSize = 12.sp)
+                Column(Modifier.weight(1f)) { Text(UsbDevices.describe(d.device), fontWeight = FontWeight.Bold); Text(tr("Tap to detect Meshtastic, MeshCore or RNode"), fontSize = 12.sp) }
+                if (busy == d.device.deviceName) Text(tr("Detecting…"), fontSize = 12.sp)
             }
         }
-        item { TextButton(onClick = { usbList = UsbDevices.drivers(ctx.getSystemService(UsbManager::class.java)) }, Modifier.padding(horizontal = 12.dp)) { Text("Refresh USB list") } }
+        item { TextButton(onClick = { usbList = UsbDevices.drivers(ctx.getSystemService(UsbManager::class.java)) }, Modifier.padding(horizontal = 12.dp)) { Text(tr("Refresh USB list")) } }
+        item { SectionLabel("Wi-Fi") }
+        item {
+            var host by remember { mutableStateOf("") }
+            var netProto by remember { mutableStateOf(ProtocolType.MESHTASTIC) }
+            var busyNet by remember { mutableStateOf(false) }
+            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(tr("A radio with Wi-Fi on the same network as this phone (Meshtastic network API, or the MeshCore Wi-Fi companion firmware)."), fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(ProtocolType.MESHTASTIC, ProtocolType.MESHCORE).forEach { p -> FilterChip(netProto == p, { netProto = p }, { Text(p.shortTag) }) }
+                }
+                OutlinedTextField(host, { host = it.trim() }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(tr("IP address or name")) },
+                    placeholder = { Text(if (netProto == ProtocolType.MESHCORE) "192.168.1.50:5000" else "192.168.1.50 or meshtastic.local") })
+                Button(enabled = host.isNotBlank() && !busyNet, onClick = {
+                    busyNet = true
+                    scope.launch {
+                        app.radios.connectTcp(host, netProto).onSuccess { ctx.toast(tr("Connected over Wi-Fi")); nav.popBackStack() }
+                            .onFailure { ctx.toast(long = true, message = "Couldn't connect: ${it.message}") }
+                        busyNet = false
+                    }
+                }) { Text(if (busyNet) "Connecting…" else "Connect") }
+            }
+        }
         if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) item { SectionLabel("Reticulum") }
         if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) item {
             var installed by remember { mutableStateOf(org.highbridge.app.rns.ReticulumSupport.isInstalled(ctx)) }
             var askDownload by remember { mutableStateOf(false) }
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Talk to Sideband, MeshChat and NomadNet users through an RNode, on the same Wi-Fi (AutoInterface), or through TCP hosts set in Settings.", style = MaterialTheme.typography.bodyMedium)
+                Text(tr("Talk to Sideband, MeshChat and NomadNet users through an RNode, on the same Wi-Fi (AutoInterface), or through TCP hosts set in Settings."), style = MaterialTheme.typography.bodyMedium)
                 if (!installed) {
                     Text("Reticulum support needs a one-time download (about ${org.highbridge.app.rns.ReticulumSupport.DOWNLOAD_KB} KB).", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { askDownload = true }) { Text(if (busy == "dl") "Downloading…" else "Get Reticulum") }
@@ -381,12 +418,12 @@ fun ConnectScreen() {
                 Gap(24)
             }
             if (askDownload) androidx.compose.material3.AlertDialog(onDismissRequest = { askDownload = false },
-                title = { Text("Download Reticulum?") },
+                title = { Text(tr("Download Reticulum?")) },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Highbridge talks to Reticulum using the official RNS and LXMF packages by Mark Qvist. They aren't built into Highbridge, because their license (the Reticulum License) has rules the GPL doesn't allow inside a GPL app.")
-                    Text("That license lets you use them freely, except in systems meant to purposely harm people, or to build AI or machine-learning training datasets. By downloading, you agree to it.")
-                    TextButton(onClick = { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(org.highbridge.app.rns.ReticulumSupport.LICENSE_URL))) }) { Text("Read the Reticulum License") }
-                    Text("Files come from PyPI (pypi.org) and are checked against fixed checksums.", fontSize = 12.sp)
+                    Text(tr("Highbridge talks to Reticulum using the official RNS and LXMF packages by Mark Qvist. They aren't built into Highbridge, because their license (the Reticulum License) has rules the GPL doesn't allow inside a GPL app."))
+                    Text(tr("That license lets you use them freely, except in systems meant to purposely harm people, or to build AI or machine-learning training datasets. By downloading, you agree to it."))
+                    TextButton(onClick = { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(org.highbridge.app.rns.ReticulumSupport.LICENSE_URL))) }) { Text(tr("Read the Reticulum License")) }
+                    Text(tr("Files come from PyPI (pypi.org) and are checked against fixed checksums."), fontSize = 12.sp)
                 } },
                 confirmButton = { TextButton(onClick = {
                     askDownload = false; busy = "dl"
@@ -395,8 +432,8 @@ fun ConnectScreen() {
                         busy = null; installed = org.highbridge.app.rns.ReticulumSupport.isInstalled(ctx)
                         ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "Reticulum is ready")
                     }
-                }) { Text("I agree, download") } },
-                dismissButton = { TextButton(onClick = { askDownload = false }) { Text("Not now") } })
+                }) { Text(tr("I agree, download")) } },
+                dismissButton = { TextButton(onClick = { askDownload = false }) { Text(tr("Not now")) } })
         }
     }
 }
@@ -419,3 +456,32 @@ suspend fun requestUsbPermission(ctx: Context, device: UsbDevice): Boolean {
 val supportedProtocols: List<ProtocolType> =
     ProtocolType.entries.filter { it != ProtocolType.RETICULUM || org.highbridge.app.rns.ReticulumSupport.AVAILABLE }
 val supportedBridgeModes: List<BridgeMode> = BridgeMode.entries.filter { m -> m.activeProtocols.all { it in supportedProtocols } }
+
+
+/** Export or import a MeshCore radio's name, radio settings, power and channels as a JSON file. */
+@Composable
+private fun McConfigBackup() {
+    val app = HighbridgeApp.instance
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val save = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching { val j = app.radios.meshcore!!.exportConfig(app.prefs.mcRegion.value); ctx.contentResolver.openOutputStream(uri)!!.use { it.write(j.toByteArray()) } }
+            .fold({ ctx.toast(tr("Config saved. It includes channel keys: keep it private."), long = true) }, { ctx.toast(it.message, long = true) })
+    }
+    val open = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val text = runCatching { ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() } }.getOrNull() ?: return@launch ctx.toast(tr("Couldn't read that file"))
+            app.radios.meshcore?.importConfig(text)?.fold({ region ->
+                if (region != null) { app.prefs.setMcRegion(region); app.radios.meshcore?.setRegionScope(region) }
+                ctx.toast(tr("Config applied"))
+            }, { ctx.toast(it.message, long = true) })
+        }
+    }
+    Text(tr("Back up or copy settings"), fontWeight = FontWeight.Bold)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { save.launch("meshcore-config.json") }) { Text(tr("Export")) }
+        OutlinedButton(onClick = { open.launch(arrayOf("application/json", "text/plain", "*/*")) }) { Text(tr("Import")) }
+    }
+}

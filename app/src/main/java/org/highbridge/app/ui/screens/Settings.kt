@@ -2,12 +2,15 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import org.highbridge.app.ui.toast
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -112,54 +115,59 @@ fun SettingsScreen() {
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        HbHeader("Settings", "Highbridge ${BuildConfig.VERSION_NAME}", onBack = { nav.popBackStack() })
+        HbHeader(tr("Settings"), "Highbridge ${BuildConfig.VERSION_NAME}", onBack = { nav.popBackStack() })
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             HbCard {
-                Text("Your name on the mesh", fontWeight = FontWeight.Bold)
+                Text(tr("Your name on the mesh"), fontWeight = FontWeight.Bold)
                 OutlinedTextField(nameDraft, { nameDraft = it.take(39) }, Modifier.fillMaxWidth(), singleLine = true)
                 Button(onClick = {
                     p.setDisplayName(nameDraft)
                     scope.launch {
                         app.radios.radios.value.values.forEach { it.setOwnerName(nameDraft, nameDraft.filter { c -> c.isLetterOrDigit() }.take(4).ifBlank { "HB" }) }
-                        ctx.toast("Saved and sent to your radios")
+                        ctx.toast(tr("Saved and sent to your radios"))
                     }
-                }) { Text("Save") }
+                }) { Text(tr("Save")) }
             }
             HbCard {
-                Text("Location", fontWeight = FontWeight.Bold)
+                Text(tr("Location"), fontWeight = FontWeight.Bold)
                 LocationUpdateMode.entries.forEach { m ->
                     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(mode == m, { p.setLocationMode(m) }); Column { Text(m.title + if (m.isRecommended) " (recommended)" else ""); Text(m.subtitle, fontSize = 12.sp) } }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) { Text("Share my position with the mesh", Modifier.weight(1f)); Switch(share, { p.setShareLocation(it) }) }
-                Row(verticalAlignment = Alignment.CenterVertically) { Text("Metric units", Modifier.weight(1f)); Switch(metric, { p.setMetric(it) }) }
+                Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Share my position with the mesh"), Modifier.weight(1f)); Switch(share, { p.setShareLocation(it) }) }
+                Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Metric units"), Modifier.weight(1f)); Switch(metric, { p.setMetric(it) }) }
+                if (android.os.Build.VERSION.SDK_INT >= 33) Row(Modifier.fillMaxWidth().clickable {
+                    runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_LOCALE_SETTINGS, android.net.Uri.parse("package:" + ctx.packageName))) }
+                }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text(tr("Language")); Text(tr("Choose English, Spanish or Norwegian for Highbridge"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
                 Text("Hide nodes not heard for ${stale / 60} h", fontSize = 13.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(60, 120, 720, 1440, 10080).forEach { m -> FilterChip(stale == m, { p.setStaleMinutes(m) }, { Text(if (m < 1440) "${m / 60} h" else "${m / 1440} d") }) } }
             }
             HbCard {
-                Text("Power", fontWeight = FontWeight.Bold)
+                Text(tr("Power"), fontWeight = FontWeight.Bold)
                 battery?.let { Text("Phone battery $it%", fontSize = 12.sp) }
                 PowerProfile.entries.forEach { pr ->
                     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(power == pr, { p.setPowerProfile(pr) }); Column { Text(pr.title); Text(pr.summary, fontSize = 12.sp) } }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) { Text("Switch to Ultra-Low Power below 20% battery", Modifier.weight(1f)); Switch(auto, { p.setAutoLowBattery(it) }) }
+                Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Switch to Ultra-Low Power below 20% battery"), Modifier.weight(1f)); Switch(auto, { p.setAutoLowBattery(it) }) }
             }
             HbCard {
-                Text("Appearance", fontWeight = FontWeight.Bold)
+                Text(tr("Appearance"), fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("SYSTEM" to "Match phone", "LIGHT" to "Light", "DARK" to "Fort Road at night").forEach { (k, l) -> FilterChip(dark == k, { p.setDarkMode(k) }, { Text(l) }) } }
             }
             if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) HbCard {
-                Text("Reticulum", fontWeight = FontWeight.Bold); Text("Changes here take effect the next time the app starts.", fontSize = 12.sp)
-                Row(verticalAlignment = Alignment.CenterVertically) { Text("Find peers on Wi-Fi (AutoInterface)", Modifier.weight(1f)); Switch(rnsAuto, { p.setRnsAuto(it) }) }
+                Text("Reticulum", fontWeight = FontWeight.Bold); Text(tr("Changes here take effect the next time the app starts."), fontSize = 12.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Find peers on Wi-Fi (AutoInterface)"), Modifier.weight(1f)); Switch(rnsAuto, { p.setRnsAuto(it) }) }
                 var hosts by remember { mutableStateOf(tcp) }
-                OutlinedTextField(hosts, { hosts = it }, Modifier.fillMaxWidth(), label = { Text("TCP hosts, comma-separated (host:port)") }, singleLine = true)
-                TextButton(onClick = { p.setRnsTcpHosts(hosts) }) { Text("Save hosts") }
+                OutlinedTextField(hosts, { hosts = it }, Modifier.fillMaxWidth(), label = { Text(tr("TCP hosts, comma-separated (host:port)")) }, singleLine = true)
+                TextButton(onClick = { p.setRnsTcpHosts(hosts) }) { Text(tr("Save hosts")) }
             }
             HbCard {
-                Text("PIN lock", fontWeight = FontWeight.Bold)
+                Text(tr("PIN lock"), fontWeight = FontWeight.Bold)
                 Text(if (pin == null) "Off" else "On. A duress PIN, if set, erases everything when entered.", fontSize = 12.sp)
-                OutlinedTextField(newPin, { newPin = it.filter(Char::isDigit).take(12) }, Modifier.fillMaxWidth(), label = { Text("New PIN (4–12 digits)") }, singleLine = true,
+                OutlinedTextField(newPin, { newPin = it.filter(Char::isDigit).take(12) }, Modifier.fillMaxWidth(), label = { Text(tr("New PIN (4–12 digits)")) }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
-                OutlinedTextField(duressPin, { duressPin = it.filter(Char::isDigit).take(12) }, Modifier.fillMaxWidth(), label = { Text("Duress PIN (optional, wipes the app)") }, singleLine = true,
+                OutlinedTextField(duressPin, { duressPin = it.filter(Char::isDigit).take(12) }, Modifier.fillMaxWidth(), label = { Text(tr("Duress PIN (optional, wipes the app)")) }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(enabled = newPin.length >= 4 && duressPin != newPin, onClick = {
@@ -168,30 +176,30 @@ fun SettingsScreen() {
                             p.setPin("${rec.saltB64}|${rec.hashB64}|${rec.iterations}")
                             if (duressPin.length >= 4) withContext(Dispatchers.Default) { AppSecurityManager.create(duressPin) }.let { d -> p.setDuress("${d.saltB64}|${d.hashB64}|${d.iterations}") } else p.setDuress(null)
                             newPin = ""; duressPin = ""
-                            ctx.toast("PIN lock on")
+                            ctx.toast(tr("PIN lock on"))
                         }
-                    }) { Text("Turn on") }
-                    if (pin != null) OutlinedButton(onClick = { p.setPin(null); p.setDuress(null) }) { Text("Turn off") }
+                    }) { Text(tr("Turn on")) }
+                    if (pin != null) OutlinedButton(onClick = { p.setPin(null); p.setDuress(null) }) { Text(tr("Turn off")) }
                 }
             }
             HbCard {
-                Text("Encrypted backup", fontWeight = FontWeight.Bold)
-                Text("Messages, nodes, channel keys, geofences and settings, sealed with AES-256-GCM and your password.", fontSize = 12.sp)
-                OutlinedTextField(backupPw, { backupPw = it }, Modifier.fillMaxWidth(), label = { Text("Backup password (8+ characters)") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+                Text(tr("Encrypted backup"), fontWeight = FontWeight.Bold)
+                Text(tr("Messages, nodes, channel keys, geofences and settings, sealed with AES-256-GCM and your password."), fontSize = 12.sp)
+                OutlinedTextField(backupPw, { backupPw = it }, Modifier.fillMaxWidth(), label = { Text(tr("Backup password (8+ characters)")) }, singleLine = true, visualTransformation = PasswordVisualTransformation())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(enabled = backupPw.length >= 8, onClick = { exportDoc.launch("highbridge-backup.hbk") }) { Text("Back up") }
-                    OutlinedButton(enabled = backupPw.length >= 8, onClick = { importDoc.launch(arrayOf("*/*")) }) { Text("Restore") }
+                    Button(enabled = backupPw.length >= 8, onClick = { exportDoc.launch("highbridge-backup.hbk") }) { Text(tr("Back up")) }
+                    OutlinedButton(enabled = backupPw.length >= 8, onClick = { importDoc.launch(arrayOf("*/*")) }) { Text(tr("Restore")) }
                 }
             }
-            SectionLabel("About", Modifier.padding(0.dp))
-            Text("Highbridge is named for Saint Paul's High Bridge, which joins West 7th to the West Side bluffs.", style = MaterialTheme.typography.bodyMedium)
+            SectionLabel(tr("About"), Modifier.padding(0.dp))
+            Text(tr("Highbridge is named for Saint Paul's High Bridge, which joins West 7th to the West Side bluffs."), style = MaterialTheme.typography.bodyMedium)
             Text(LEGAL_NOTICE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { nav.navigate("licenses") }) { Text("Open-source licenses") }
-                TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_URL))) }) { Text("Source code") }
+                TextButton(onClick = { nav.navigate("licenses") }) { Text(tr("Open-source licenses")) }
+                TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_URL))) }) { Text(tr("Source code")) }
             }
             TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://stpaulmesh.com"))) }) { Text("stpaulmesh.com") }
-            Text("Map data © OpenStreetMap contributors.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr("Map data © OpenStreetMap contributors."), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -256,7 +264,7 @@ fun LockScreen(onUnlocked: () -> Unit) {
                     PinResult.INVALID -> msg = "Wrong PIN"
                 }
             }
-        }) { Text("Unlock") }
+        }) { Text(tr("Unlock")) }
         msg?.let { Text(it, color = StPaulMeshPalette.Danger, textAlign = TextAlign.Center) }
     }
 }

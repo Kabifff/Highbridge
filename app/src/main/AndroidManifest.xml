@@ -29,6 +29,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
+        android:localeConfig="@xml/locales_config"
         android:name=".HighbridgeApp"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -57,6 +58,19 @@
                 <data android:scheme="highbridge" android:host="channel" />
             </intent-filter>
         </activity>
+
+        <receiver android:name=".radio.NotificationActionReceiver" android:exported="false" />
+
+        <receiver android:name=".widget.StatusWidget" android:exported="false" android:label="Highbridge status">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="org.highbridge.WIDGET_CHECKIN" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/status_widget_info" />
+        </receiver>
+
+        <!-- Android Auto: messages appear and can be answered by voice through the messaging notifications. -->
+        <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
 
         <service
             android:name="org.highbridge.feature.bridge.MeshBridgeService"

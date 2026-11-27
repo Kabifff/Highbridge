@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import org.highbridge.app.ui.toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -76,10 +78,10 @@ fun MicronScreen() {
     Column(Modifier.fillMaxSize()) {
         HbHeader("NomadNet", "Micron pages over Reticulum", onBack = { if (history.size > 1) { history.removeAt(history.lastIndex); history.last().let { load(it.first, it.second) } } else nav.popBackStack() })
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            OutlinedTextField(node, { node = it.trim() }, Modifier.fillMaxWidth(), label = { Text("Node address (hex)") }, singleLine = true)
+            OutlinedTextField(node, { node = it.trim() }, Modifier.fillMaxWidth(), label = { Text(tr("Node address (hex)")) }, singleLine = true)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(path, { path = it }, Modifier.weight(1f), label = { Text("Page") }, singleLine = true)
-                TextButton(onClick = { load(node, path) }, enabled = node.length >= 32) { Text("Open") }
+                OutlinedTextField(path, { path = it }, Modifier.weight(1f), label = { Text(tr("Page")) }, singleLine = true)
+                TextButton(onClick = { load(node, path) }, enabled = node.length >= 32) { Text(tr("Open")) }
             }
             if (servers.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(servers) { s -> AssistChip({ load(s.id, "/page/index.mu") }, { Text(s.longName.take(20)) }) }
@@ -123,32 +125,32 @@ fun RepeaterAdminScreen(id: String) {
     val path = remember(c) { mutableStateListOf<String>().apply { c?.directPath?.forEach { add("%02x".format(it)) } } }
     LaunchedEffect(Unit) { app.radios.adminReplies.collect { if (it.fromId.startsWith(id.take(8)) || it.fromId == id) replies.add(0, it.text) } }
 
-    if (mc == null || c == null) { Column { HbHeader("Repeater admin", onBack = { nav.popBackStack() }); Text("Connect the MeshCore radio that knows this contact.", Modifier.padding(20.dp)) }; return }
+    if (mc == null || c == null) { Column { HbHeader(tr("Repeater admin"), onBack = { nav.popBackStack() }); Text(tr("Connect the MeshCore radio that knows this contact."), Modifier.padding(20.dp)) }; return }
     LazyColumn(Modifier.fillMaxSize()) {
         item { HbHeader(c.name, if (c.isRepeater) "Repeater" else if (c.isRoom) "Room server" else "Contact", onBack = { nav.popBackStack() }) }
         item {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 HbCard {
-                    Text("Log in", fontWeight = FontWeight.Bold)
-                    OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Admin or guest password") }, singleLine = true,
+                    Text(tr("Log in"), fontWeight = FontWeight.Bold)
+                    OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text(tr("Admin or guest password")) }, singleLine = true,
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { scope.launch { ctx.toast(mc.login(id, password).exceptionOrNull()?.message ?: "Login sent; the reply shows below") } }) { Text("Log in") }
-                        OutlinedButton(onClick = { scope.launch { ctx.toast(mc.requestStatus(id).exceptionOrNull()?.message ?: "Sent") } }) { Text("Get status") }
+                        Button(onClick = { scope.launch { ctx.toast(mc.login(id, password).exceptionOrNull()?.message ?: "Login sent; the reply shows below") } }) { Text(tr("Log in")) }
+                        OutlinedButton(onClick = { scope.launch { ctx.toast(mc.requestStatus(id).exceptionOrNull()?.message ?: "Sent") } }) { Text(tr("Get status")) }
                     }
-                    Text("The password goes in MeshCore's encrypted login request, not as a chat message.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tr("The password goes in MeshCore's encrypted login request, not as a chat message."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 HbCard {
-                    Text("Remote command", fontWeight = FontWeight.Bold)
-                    OutlinedTextField(cmd, { cmd = it }, Modifier.fillMaxWidth(), label = { Text("e.g. ver, get name, set tx 20, advert, reboot") }, singleLine = true,
+                    Text(tr("Remote command"), fontWeight = FontWeight.Bold)
+                    OutlinedTextField(cmd, { cmd = it }, Modifier.fillMaxWidth(), label = { Text(tr("e.g. ver, get name, set tx 20, advert, reboot")) }, singleLine = true,
                         textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace))
-                    Button(enabled = cmd.isNotBlank(), onClick = { val k = cmd; cmd = ""; replies.add(0, "> $k"); scope.launch { mc.remoteCli(id, k).onFailure { ctx.toast(it.message ?: "Sent") } } }) { Text("Send command") }
+                    Button(enabled = cmd.isNotBlank(), onClick = { val k = cmd; cmd = ""; replies.add(0, "> $k"); scope.launch { mc.remoteCli(id, k).onFailure { ctx.toast(it.message ?: "Sent") } } }) { Text(tr("Send command")) }
                     replies.take(20).forEach { Text(it, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
                 }
                 HbCard {
-                    Text("Path editor", fontWeight = FontWeight.Bold)
+                    Text(tr("Path editor"), fontWeight = FontWeight.Bold)
                     Text(if (c.directPath == null) "No known path: messages flood the mesh." else "Route: You → ${path.joinToString(" → ")} → ${c.name}", fontSize = 13.sp)
-                    Text("Each hop is a repeater's 1-byte ID. Tap a repeater below to add it, tap a hop to remove it.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tr("Each hop is a repeater's 1-byte ID. Tap a repeater below to add it, tap a hop to remove it."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(path.toList().withIndex().toList()) { (i, h) -> InputChip(true, { path.removeAt(i) }, { Text(contacts.values.firstOrNull { "%02x".format(it.publicKey[0]) == h }?.name?.take(12) ?: h) }) }
                     }
@@ -156,8 +158,8 @@ fun RepeaterAdminScreen(id: String) {
                         items(contacts.values.filter { it.isRepeater && it.prefixHex != id }) { r -> AssistChip({ if (path.size < MC.MAX_PATH_SIZE) path.add("%02x".format(r.publicKey[0])) }, { Text("+ ${r.name.take(14)}") }) }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { scope.launch { ctx.toast(mc.setPath(id, path.map { it.toInt(16).toByte() }.toByteArray()).exceptionOrNull()?.message ?: "Path saved") } }) { Text("Save path") }
-                        OutlinedButton(onClick = { scope.launch { ctx.toast(mc.resetPath(id).exceptionOrNull()?.message ?: "Path reset; the next message will flood") } }) { Text("Reset path") }
+                        Button(onClick = { scope.launch { ctx.toast(mc.setPath(id, path.map { it.toInt(16).toByte() }.toByteArray()).exceptionOrNull()?.message ?: "Path saved") } }) { Text(tr("Save path")) }
+                        OutlinedButton(onClick = { scope.launch { ctx.toast(mc.resetPath(id).exceptionOrNull()?.message ?: "Path reset; the next message will flood") } }) { Text(tr("Reset path")) }
                     }
                 }
             }

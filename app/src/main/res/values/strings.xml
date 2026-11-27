@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">Highbridge</string>
+    <string name="app_name" translatable="false">Highbridge</string>
+    <string name="widget_description">Radios connected, unread messages, and one-tap check-in</string>
 </resources>

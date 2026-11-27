@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import org.highbridge.app.ui.toast
 import android.content.Context
 import android.content.Intent
@@ -98,6 +100,9 @@ fun ToolsScreen() {
     val tools = listOf(
         "wardrive" to ("Wardriving" to "Map where Meshtastic and MeshCore reach, live on stpaulmesh.com"),
         "search" to ("Search messages" to "Find any message on any network"),
+        "ar" to ("AR view" to "Point the camera to see nodes, pins and landmarks; drop a pin ahead"),
+        "predict" to ("Coverage prediction" to "How far an antenna should reach, from height, power and gain"),
+        "discover" to ("Discover (MeshCore)" to "Adverts heard nearby, with one tap to add them"),
         "checkin" to ("Check-in & SOS" to "One tap to tell everyone you're OK, or that you need help"),
         "topology" to ("Topology graph" to "Who hears whom, by hops and signal, without GPS"),
         "geofences" to ("Geofences" to "Alerts when a node leaves an area or drifts off a trail"),
@@ -110,10 +115,10 @@ fun ToolsScreen() {
         "micron" to ("NomadNet browser" to "Read Micron pages from Reticulum nodes"),
     ).filter { it.first != "micron" || org.highbridge.app.rns.ReticulumSupport.AVAILABLE }
     LazyColumn(Modifier.fillMaxSize()) {
-        item { HbHeader("Field tools", "Work offline, anywhere", onBack = { nav.popBackStack() }) }
+        item { HbHeader(tr("Field tools"), tr("Work offline, anywhere"), onBack = { nav.popBackStack() }) }
         items(tools) { (route, t) ->
             Column(Modifier.fillMaxWidth().clickable { nav.navigate(route) }.padding(horizontal = 20.dp, vertical = 12.dp)) {
-                Text(t.first, fontWeight = FontWeight.Bold); Text(t.second, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr(t.first), fontWeight = FontWeight.Bold); Text(tr(t.second), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         }
@@ -129,16 +134,16 @@ fun CheckInScreen() {
     val radios by app.radios.radios.collectAsState()
     var confirmSos by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
-        HbHeader("Check-in & SOS", "Sends on channel 0 of every connected radio", onBack = { nav.popBackStack() })
+        HbHeader(tr("Check-in & SOS"), tr("Sends on channel 0 of every connected radio"), onBack = { nav.popBackStack() })
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(if (radios.isEmpty()) "Connect a radio first." else "Will send through ${radios.keys.joinToString { it.shortTag }}, with your location if the phone has one.")
             Button(onClick = { scope.launch { val s = app.radios.broadcastStatus(false); ctx.toast(if (s.isEmpty()) "Nothing sent" else "Check-in sent on ${s.joinToString()}", long = true) } },
-                Modifier.fillMaxWidth().height(64.dp), enabled = radios.isNotEmpty()) { Text("I'm OK — check in", fontSize = 18.sp) }
+                Modifier.fillMaxWidth().height(64.dp), enabled = radios.isNotEmpty()) { Text(tr("I'm OK — check in"), fontSize = 18.sp) }
             Button(onClick = { if (confirmSos) { confirmSos = false; scope.launch { val s = app.radios.broadcastStatus(true); ctx.toast("SOS sent on ${s.joinToString()}", long = true) } } else confirmSos = true },
                 Modifier.fillMaxWidth().height(64.dp), enabled = radios.isNotEmpty(), colors = ButtonDefaults.buttonColors(containerColor = StPaulMeshPalette.Danger)) {
                 Text(if (confirmSos) "Tap again to send SOS" else "SOS — I need help", fontSize = 18.sp)
             }
-            Text("An SOS is a message to everyone on the mesh. It does not call emergency services. Call 911 (or your local number) if you can.",
+            Text(tr("An SOS is a message to everyone on the mesh. It does not call emergency services. Call 911 (or your local number) if you can."),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -158,7 +163,7 @@ fun TopologyScreen() {
     val ink = MaterialTheme.colorScheme.onSurface
     val ringColor = MaterialTheme.colorScheme.outline
     Column(Modifier.fillMaxSize()) {
-        HbHeader("Topology", "Rings are hops from you; lines are traceroutes, labelled with SNR", onBack = { nav.popBackStack() })
+        HbHeader(tr("Topology"), tr("Rings are hops from you; lines are traceroutes, labelled with SNR"), onBack = { nav.popBackStack() })
         Canvas(Modifier.fillMaxWidth().aspectRatio(1f).padding(12.dp)) {
             val c = Offset(size.width / 2, size.height / 2)
             val maxHop = (graph.nodes.maxOfOrNull { it.hops } ?: 1).coerceIn(1, 7)
@@ -212,8 +217,8 @@ fun CompassScreen(key: String) {
     val dist = if (me != null && n?.lat != null && n.lon != null) Geo.distanceM(me!!.first, me!!.second, n.lat, n.lon) else null
     val green = MaterialTheme.colorScheme.primary
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-        HbHeader("Compass", n?.longName ?: "", onBack = { nav.popBackStack() })
-        if (bearing == null) Text("Waiting for your location and the node's position…", Modifier.padding(20.dp))
+        HbHeader(tr("Compass"), n?.longName ?: "", onBack = { nav.popBackStack() })
+        if (bearing == null) Text(tr("Waiting for your location and the node's position…"), Modifier.padding(20.dp))
         else {
             Box(Modifier.padding(24.dp).size(280.dp).rotate(bearing - heading), contentAlignment = Alignment.Center) {
                 Canvas(Modifier.fillMaxSize()) {
@@ -224,8 +229,10 @@ fun CompassScreen(key: String) {
                 }
             }
             Text(Geo.formatDistance(dist!!, metric), style = MaterialTheme.typography.headlineMedium, color = green)
-            Text("Bearing %.0f° %s".format(bearing, Geo.compassPoint(bearing.toDouble())))
-            Text("Hold the phone flat and point the arrow ahead of you.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr("Bearing %.0f° %s").format(bearing, Geo.compassPoint(bearing.toDouble())))
+            val myAlt by app.radios.myAltitudeM.collectAsState()
+            elevationLine(n?.altM?.toDouble(), myAlt, metric)?.let { Text(it) }
+            Text(tr("Hold the phone flat and point the arrow ahead of you."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -244,7 +251,7 @@ fun GeofenceScreen() {
     var points by remember { mutableStateOf("") }
     var nodeKey by remember { mutableStateOf<String?>(null) }
     LazyColumn(Modifier.fillMaxSize()) {
-        item { HbHeader("Geofences", "Get an alert when a node leaves an area", onBack = { nav.popBackStack() }) }
+        item { HbHeader(tr("Geofences"), tr("Get an alert when a node leaves an area"), onBack = { nav.popBackStack() }) }
         item {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 HbCard {
@@ -253,17 +260,17 @@ fun GeofenceScreen() {
                         listOf("CIRCLE" to "Circle", "POLYGON" to "Area", "TRAIL" to "Trail drift").forEach { (k, l) -> FilterChip(kind == k, { kind = k }, { Text(l) }) }
                     }
                     OutlinedTextField(points, { points = it }, Modifier.fillMaxWidth(), label = { Text(if (kind == "CIRCLE") "Center: lat,lon" else "Points: lat,lon; lat,lon; …") })
-                    if (kind == "CIRCLE") TextButton(onClick = { me?.let { points = "%.6f,%.6f".format(it.first, it.second) } }, enabled = me != null) { Text("Use my location") }
+                    if (kind == "CIRCLE") TextButton(onClick = { me?.let { points = "%.6f,%.6f".format(it.first, it.second) } }, enabled = me != null) { Text(tr("Use my location")) }
                     if (kind != "POLYGON") OutlinedTextField(radius, { radius = it.filter { c -> c.isDigit() } }, Modifier.fillMaxWidth(), label = { Text(if (kind == "TRAIL") "Allowed drift (m)" else "Radius (m)") })
                     Text("Watch: ${nodes.firstOrNull { it.key == nodeKey }?.longName ?: "every node"}", fontSize = 13.sp)
                     androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        item { FilterChip(nodeKey == null, { nodeKey = null }, { Text("All") }) }
+                        item { FilterChip(nodeKey == null, { nodeKey = null }, { Text(tr("All")) }) }
                         items(nodes.filter { it.lat != null }.take(30)) { n -> FilterChip(nodeKey == n.key, { nodeKey = n.key }, { Text(n.shortName) }) }
                     }
                     Button(enabled = name.isNotBlank() && Geo.parsePoints(points).isNotEmpty(), onClick = {
                         scope.launch { app.db.dao().upsertGeofence(GeofenceEntity(name = name, kind = kind, points = points, radiusM = radius.toDoubleOrNull() ?: 300.0, nodeKey = nodeKey)) }
                         name = ""; points = ""
-                    }) { Text("Add geofence") }
+                    }) { Text(tr("Add geofence")) }
                 }
             }
         }
@@ -271,7 +278,7 @@ fun GeofenceScreen() {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) { Text(g.name, fontWeight = FontWeight.Bold); Text("${g.kind.lowercase()} · ${if (g.kind == "POLYGON") "" else "${g.radiusM.toInt()} m · "}${nodes.firstOrNull { it.key == g.nodeKey }?.longName ?: "all nodes"}", fontSize = 12.sp) }
                 Switch(g.active, { on -> scope.launch { app.db.dao().upsertGeofence(g.copy(active = on)) } })
-                TextButton(onClick = { scope.launch { app.db.dao().deleteGeofence(g.rowId) } }) { Text("Delete") }
+                TextButton(onClick = { scope.launch { app.db.dao().deleteGeofence(g.rowId) } }) { Text(tr("Delete")) }
             }
         }
     }
@@ -299,20 +306,20 @@ fun WeatherScreen() {
     val north = (app.radios.myLocation.value?.first ?: 45.0) >= 0
     val summer = if (north) month in 3..8 else month !in 3..8
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        HbHeader("Barometer forecast", "Zambretti, offline", onBack = { nav.popBackStack() })
+        HbHeader(tr("Barometer forecast"), tr("Zambretti, offline"), onBack = { nav.popBackStack() })
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (now == null) Text("This phone has no barometer and no node has sent pressure yet. Nodes with a BME280 or BMP280 sensor report it in telemetry.")
+            if (now == null) Text(tr("This phone has no barometer and no node has sent pressure yet. Nodes with a BME280 or BMP280 sensor report it in telemetry."))
             else {
                 val sl = Zambretti.seaLevel(now.toDouble(), alt)
                 val trend = threeHoursAgo?.let { Zambretti.trendOf(now - it.toDouble()) } ?: Zambretti.Trend.STEADY
                 HbCard {
                     Text(Zambretti.forecast(sl, trend, summer), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-                    Text("%.1f hPa at sea level · %s".format(sl, trend.name.lowercase()))
-                    if (threeHoursAgo == null) Text("Trend needs about 3 hours of readings; assuming steady for now.", fontSize = 12.sp)
+                    Text(tr("%.1f hPa at sea level · %s").format(sl, trend.name.lowercase()))
+                    if (threeHoursAgo == null) Text(tr("Trend needs about 3 hours of readings; assuming steady for now."), fontSize = 12.sp)
                 }
             }
-            OutlinedTextField(altitude, { altitude = it }, Modifier.fillMaxWidth(), label = { Text("Your altitude (m)") }, singleLine = true)
-            Text("Zambretti is a rule of thumb from 1915, right roughly three times in four. Check an official forecast when you can.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(altitude, { altitude = it }, Modifier.fillMaxWidth(), label = { Text(tr("Your altitude (m)")) }, singleLine = true)
+            Text(tr("Zambretti is a rule of thumb from 1915, right roughly three times in four. Check an official forecast when you can."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -330,12 +337,12 @@ fun MorseScreen() {
     var upAt by remember { mutableLongStateOf(0L) }
     DisposableEffect(Unit) { onDispose { keyer.release() } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        HbHeader("Morse & CW", "International Morse, 700 Hz sidetone", onBack = { nav.popBackStack() })
+        HbHeader(tr("Morse & CW"), tr("International Morse, 700 Hz sidetone"), onBack = { nav.popBackStack() })
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(text, { text = it; morse = MorseCodec.encode(it) }, Modifier.fillMaxWidth(), label = { Text("Text") })
-            OutlinedTextField(morse, { morse = it; text = MorseCodec.decode(it) }, Modifier.fillMaxWidth(), label = { Text("Morse (. - and / between words)") }, textStyle = TextStyle(fontFamily = FontFamily.Monospace))
-            OutlinedButton(onClick = { scope.launch { keyer.playText(text) } }, enabled = text.isNotBlank()) { Text("Play it") }
-            SectionLabel("Straight key", Modifier.padding(0.dp))
+            OutlinedTextField(text, { text = it; morse = MorseCodec.encode(it) }, Modifier.fillMaxWidth(), label = { Text(tr("Text")) })
+            OutlinedTextField(morse, { morse = it; text = MorseCodec.decode(it) }, Modifier.fillMaxWidth(), label = { Text(tr("Morse (. - and / between words)")) }, textStyle = TextStyle(fontFamily = FontFamily.Monospace))
+            OutlinedButton(onClick = { scope.launch { keyer.playText(text) } }, enabled = text.isNotBlank()) { Text(tr("Play it")) }
+            SectionLabel(tr("Straight key"), Modifier.padding(0.dp))
             Box(Modifier.fillMaxWidth().height(120.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp)).pointerInput(Unit) {
                 detectTapGestures(onPress = {
                     val now = System.currentTimeMillis()
@@ -344,10 +351,10 @@ fun MorseScreen() {
                     tryAwaitRelease()
                     keyer.keyUp(); upAt = System.currentTimeMillis(); decoder.onTone(upAt - downAt); keyed = decoder.morse
                 })
-            }, contentAlignment = Alignment.Center) { Text("Press and hold to key", color = MaterialTheme.colorScheme.onPrimary) }
+            }, contentAlignment = Alignment.Center) { Text(tr("Press and hold to key"), color = MaterialTheme.colorScheme.onPrimary) }
             Text(keyed, fontFamily = FontFamily.Monospace)
             Text(MorseCodec.decode(keyed), style = MaterialTheme.typography.titleLarge)
-            TextButton(onClick = { decoder.clear(); keyed = ""; upAt = 0 }) { Text("Clear") }
+            TextButton(onClick = { decoder.clear(); keyed = ""; upAt = 0 }) { Text(tr("Clear")) }
         }
     }
 }
@@ -361,7 +368,7 @@ fun RangeTestScreen() {
     val running by app.radios.rangeTestRunning.collectAsState()
     val results by app.db.dao().rangeTests().collectAsState(emptyList())
     LazyColumn(Modifier.fillMaxSize()) {
-        item { HbHeader("Range test", "Meshtastic range-test pings and a signal heatmap", onBack = { nav.popBackStack() }) }
+        item { HbHeader(tr("Range test"), tr("Meshtastic range-test pings and a signal heatmap"), onBack = { nav.popBackStack() }) }
         item {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Turn on the Range Test module on both radios. One sends a numbered ping each minute; the other logs signal and location. Open the map and turn on \"Range test\" to see the heatmap.", style = MaterialTheme.typography.bodyMedium)
@@ -371,9 +378,9 @@ fun RangeTestScreen() {
                         val f = File(File(ctx.cacheDir, "exports").apply { mkdirs() }, "range-test.csv")
                         f.writeText("time,protocol,from,text,snr,rssi,lat,lon\n" + results.joinToString("\n") { "${it.timeMs},${it.protocol},${it.fromId},\"${it.text}\",${it.snr},${it.rssi},${it.lat},${it.lon}" })
                         shareFile(ctx, f, "text/csv")
-                    }, enabled = results.isNotEmpty()) { Text("Export CSV") }
+                    }, enabled = results.isNotEmpty()) { Text(tr("Export CSV")) }
                 }
-                TextButton(onClick = { scope.launch { app.db.dao().clearRange() } }) { Text("Clear log") }
+                TextButton(onClick = { scope.launch { app.db.dao().clearRange() } }) { Text(tr("Clear log")) }
             }
         }
         items(results.take(200)) { r ->
@@ -391,11 +398,11 @@ fun TracksScreen() {
     val ids by app.db.dao().trackIds().collectAsState(emptyList())
     var recording by remember { mutableStateOf(app.radios.recordingTrackId != null) }
     LazyColumn(Modifier.fillMaxSize()) {
-        item { HbHeader("GPX tracks", "Record and export GPX 1.1", onBack = { nav.popBackStack() }) }
+        item { HbHeader(tr("GPX tracks"), tr("Record and export GPX 1.1"), onBack = { nav.popBackStack() }) }
         item {
             Column(Modifier.padding(20.dp)) {
                 Button(onClick = { if (recording) app.radios.stopTrack() else app.radios.startTrack(); recording = !recording }) { Text(if (recording) "Stop recording" else "Start recording") }
-                Text("Points are saved at your GPS interval (Settings › Location).", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr("Points are saved at your GPS interval (Settings › Location)."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         items(ids) { id ->
@@ -408,8 +415,8 @@ fun TracksScreen() {
                         val f = File(File(ctx.cacheDir, "exports").apply { mkdirs() }, "highbridge-track-$id.gpx").apply { writeText(rec.exportGpx("Highbridge track")) }
                         shareFile(ctx, f, "application/gpx+xml")
                     }
-                }) { Text("Export") }
-                TextButton(onClick = { scope.launch { app.db.dao().deleteTrack(id) } }) { Text("Delete") }
+                }) { Text(tr("Export")) }
+                TextButton(onClick = { scope.launch { app.db.dao().deleteTrack(id) } }) { Text(tr("Delete")) }
             }
         }
     }
@@ -424,17 +431,17 @@ fun AtakScreen() {
     val on by app.prefs.atakEnabled.collectAsState()
     val nodes by app.db.dao().nodes().collectAsState(emptyList())
     Column(Modifier.fillMaxSize()) {
-        HbHeader("ATAK bridge", "Cursor on Target over UDP multicast", onBack = { nav.popBackStack() })
+        HbHeader(tr("ATAK bridge"), tr("Cursor on Target over UDP multicast"), onBack = { nav.popBackStack() })
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) { Text("Send node positions to ATAK", Modifier.weight(1f)); Switch(on, { app.prefs.setAtak(it) }) }
-            Text("Positions go to 239.2.3.1:6969 on this phone's network, where ATAK, iTAK and WinTAK listen by default.", fontSize = 13.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Send node positions to ATAK"), Modifier.weight(1f)); Switch(on, { app.prefs.setAtak(it) }) }
+            Text(tr("Positions go to 239.2.3.1:6969 on this phone's network, where ATAK, iTAK and WinTAK listen by default."), fontSize = 13.sp)
             OutlinedButton(onClick = {
                 scope.launch {
                     var n = 0
                     nodes.filter { it.lat != null }.forEach { e -> AtakCotBridge.buildCotXml(e.toMeshNode())?.let { if (AtakCotBridge.sendUdp(it).isSuccess) n++ } }
                     ctx.toast("Sent $n positions")
                 }
-            }) { Text("Send all positions now") }
+            }) { Text(tr("Send all positions now")) }
         }
     }
 }
@@ -446,14 +453,14 @@ fun AirtimeScreen() {
     val pct by app.radios.airtimePercent.collectAsState()
     val region by app.prefs.region.collectAsState()
     Column(Modifier.fillMaxSize()) {
-        HbHeader("Airtime meter", region.label, onBack = { nav.popBackStack() })
+        HbHeader(tr("Airtime meter"), region.label, onBack = { nav.popBackStack() })
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("%.2f%% of the last hour".format(pct), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            Text(tr("%.2f%% of the last hour").format(pct), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
             if (region.hasDutyCycleLimit) {
                 androidx.compose.material3.LinearProgressIndicator(progress = { (pct / region.dutyCyclePercent).coerceIn(0f, 1f) }, Modifier.fillMaxWidth().height(10.dp))
                 Text("${region.label} allows ${region.dutyCyclePercent}% duty cycle. Highbridge warns at 80% and holds messages at 100%.")
             } else Text("${region.label} has no duty-cycle limit, but less airtime means a healthier mesh for everyone.")
-            Text("This counts what this phone sent, estimated from packet size and radio settings.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr("This counts what this phone sent, estimated from packet size and radio settings."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

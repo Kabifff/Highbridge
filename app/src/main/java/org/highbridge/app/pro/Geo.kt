@@ -25,6 +25,14 @@ object Geo {
         return (Math.toDegrees(atan2(y, x)) + 360) % 360
     }
 
+    /** The point [distM] metres from (lat, lon) along [bearingDeg]. */
+    fun destination(lat: Double, lon: Double, bearingDeg: Double, distM: Double): Pair<Double, Double> {
+        val d = distM / 6_371_000.0; val b = rad(bearingDeg); val p1 = rad(lat); val l1 = rad(lon)
+        val p2 = kotlin.math.asin(sin(p1) * cos(d) + cos(p1) * sin(d) * cos(b))
+        val l2 = l1 + atan2(sin(b) * sin(d) * cos(p1), cos(d) - sin(p1) * sin(p2))
+        return Math.toDegrees(p2) to ((Math.toDegrees(l2) + 540) % 360 - 180)
+    }
+
     fun compassPoint(deg: Double): String = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")[(((deg + 22.5) % 360) / 45).toInt()]
 
     fun formatDistance(m: Double, metric: Boolean): String = if (metric) {

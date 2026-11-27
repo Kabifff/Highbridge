@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -50,17 +52,17 @@ fun WelcomeScreen() {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("WEST 7TH · SAINT PAUL", color = StPaulMeshPalette.SchmidtBrick, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.6.sp)
             Text("Highbridge", style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
-            Text("One bridge for every mesh.", fontFamily = DisplayFont, fontStyle = FontStyle.Italic, fontSize = 20.sp)
+            Text(tr("One bridge for every mesh."), fontFamily = DisplayFont, fontStyle = FontStyle.Italic, fontSize = 20.sp)
             Text("${if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) "Meshtastic, MeshCore and Reticulum" else "Meshtastic and MeshCore"} in one app. Made on Fort Road in Saint Paul, and it works on any LoRa band in the world.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.height(8.dp))
             Button(onClick = { app.prefs.setOnboarded(true); nav.navigate("radio") { popUpTo("welcome") { inclusive = true } } },
-                Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp)) { Text("Get started", fontWeight = FontWeight.Bold) }
+                Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp)) { Text(tr("Get started"), fontWeight = FontWeight.Bold) }
             OutlinedButton(onClick = {
                 app.prefs.setRegion(MeshtasticRegion.US); app.prefs.setOnboarded(true)
                 nav.navigate("connect") { popUpTo("welcome") { inclusive = true } }
-            }, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp)) { Text("Join Saint Paul Mesh", fontWeight = FontWeight.Bold) }
-            Text("No internet, cell service or account needed.", Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
+            }, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp)) { Text(tr("Join Saint Paul Mesh"), fontWeight = FontWeight.Bold) }
+            Text(tr("No internet, cell service or account needed."), Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

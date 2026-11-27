@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import org.highbridge.app.ui.toast
 import android.graphics.Color as AColor
 import android.graphics.drawable.GradientDrawable
@@ -35,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -93,6 +96,9 @@ fun MapScreen() {
     var hideStale by remember { mutableStateOf(true) }
     var favoritesOnly by remember { mutableStateOf(false) }
     var coverage by remember { mutableStateOf(false) }
+    var showRoutes by remember { mutableStateOf(false) }
+    val predicted by org.highbridge.app.pro.LinkBudget.shownOnMap.collectAsState()
+    val routes by app.db.dao().routes().collectAsState(emptyList())
     val waypoints by remember { app.db.dao().waypoints(System.currentTimeMillis()) }.collectAsState(emptyList())
     val myCoverage by app.db.dao().wardriveAllProtocols().collectAsState(emptyList())
     var dropAt by remember { mutableStateOf<GeoPoint?>(null) }
@@ -100,6 +106,7 @@ fun MapScreen() {
     var menu by remember { mutableStateOf(false) }
     var mbtiles by remember { mutableStateOf(File(ctx.filesDir, "osmdroid").listFiles()?.firstOrNull { it.extension == "mbtiles" }) }
     val mapView = remember { MapView(ctx).apply { setMultiTouchControls(true); controller.setZoom(13.0); controller.setCenter(SAINT_PAUL); zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER) } }
+    LaunchedEffect(predicted) { predicted?.let { c -> mapView.controller.animateTo(GeoPoint(c.lat, c.lon)); mapView.zoomToBoundingBox(org.osmdroid.util.BoundingBox.fromGeoPoints(Polygon.pointsAsCircle(GeoPoint(c.lat, c.lon), c.radiusM)), true, 40) } }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) mapView.onResume() else if (e == Lifecycle.Event.ON_PAUSE) mapView.onPause() }
@@ -111,32 +118,35 @@ fun MapScreen() {
         val f = File(dir, "imported.mbtiles")
         ctx.contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { i.copyTo(it) } }
         mbtiles = f; app.prefs.setMapStyle("MBTILES")
-        ctx.toast("Offline map imported")
+        ctx.toast(tr("Offline map imported"))
     }
 
     Column(Modifier.fillMaxSize()) {
-        HbHeader("Map", "${nodes.count { it.lat != null }} nodes with a position", actions = {
+        HbHeader(tr("Map"), "${nodes.count { it.lat != null }} nodes with a position", actions = {
             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Layers, "Map style") }
             DropdownMenu(menu, { menu = false }) {
-                listOf("STANDARD" to "Street", "TOPO" to "Topographic", "USGS_TOPO" to "USGS topo (US, offline OK)", "SATELLITE" to "Satellite (US, offline OK)",
+                listOf("STANDARD" to "Street", "TOPO" to "Topographic", "USGS_TOPO" to "USGS topo (US)", "SATELLITE" to "Satellite (US)",
+                    "HYBRID" to "Hybrid: satellite with labels (US)", "TERRAIN" to "Terrain: shaded relief (US)", "HYDRO" to "Water features (US)",
                     "NIGHT" to "Night").forEach { (k, l) -> DropdownMenuItem({ Text(l) }, { app.prefs.setMapStyle(k); menu = false }) }
-                if (mbtiles != null) DropdownMenuItem({ Text("Offline (.mbtiles)") }, { app.prefs.setMapStyle("MBTILES"); menu = false })
-                DropdownMenuItem({ Text("Import .mbtiles file…") }, { menu = false; importer.launch(arrayOf("*/*")) })
-                DropdownMenuItem({ Text("Save this area for offline use") }, {
+                if (mbtiles != null) DropdownMenuItem({ Text(tr("Offline (.mbtiles)")) }, { app.prefs.setMapStyle("MBTILES"); menu = false })
+                DropdownMenuItem({ Text(tr("Import .mbtiles file…")) }, { menu = false; importer.launch(arrayOf("*/*")) })
+                DropdownMenuItem({ Text(tr("Save this area for offline use")) }, {
                     menu = false
                     runCatching {
                         CacheManager(mapView).downloadAreaAsync(ctx, mapView.boundingBox, mapView.zoomLevelDouble.toInt(), (mapView.zoomLevelDouble + 2).toInt().coerceAtMost(16))
-                    }.onFailure { ctx.toast("This map's tile server doesn't allow bulk downloads. Import an .mbtiles file instead.", long = true) }
+                    }.onFailure { ctx.toast(tr("This map's tile server doesn't allow bulk downloads. Import an .mbtiles file instead."), long = true) }
                 })
             }
         })
         LazyRow(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(supportedProtocols) { p -> FilterChip(p in filter, { filter = if (p in filter) filter - p else filter + p }, { Text(p.shortTag) }) }
-            item { FilterChip(rings, { rings = !rings }, { Text("Signal rings") }) }
-            item { FilterChip(heatmap, { heatmap = !heatmap }, { Text("Range test") }) }
-            item { FilterChip(hideStale, { hideStale = !hideStale }, { Text("Hide stale") }) }
-            item { FilterChip(favoritesOnly, { favoritesOnly = !favoritesOnly }, { Text("Favorites only") }) }
-            item { FilterChip(coverage, { coverage = !coverage }, { Text("My coverage") }) }
+            item { FilterChip(rings, { rings = !rings }, { Text(tr("Signal rings")) }) }
+            item { FilterChip(heatmap, { heatmap = !heatmap }, { Text(tr("Range test")) }) }
+            item { FilterChip(hideStale, { hideStale = !hideStale }, { Text(tr("Hide stale")) }) }
+            item { FilterChip(favoritesOnly, { favoritesOnly = !favoritesOnly }, { Text(tr("Favorites only")) }) }
+            item { FilterChip(coverage, { coverage = !coverage }, { Text(tr("My coverage")) }) }
+            item { FilterChip(showRoutes, { showRoutes = !showRoutes }, { Text(tr("Traceroutes")) }) }
+            if (predicted != null) item { FilterChip(true, { org.highbridge.app.pro.LinkBudget.shownOnMap.value = null }, { Text(tr("Prediction ✕")) }) }
         }
         Box(Modifier.weight(1f)) {
             AndroidView({ mapView }, Modifier.fillMaxSize(), update = { mv ->
@@ -146,6 +156,11 @@ fun MapScreen() {
                 if (heatmap) drawRange(mv, range)
                 if (coverage) drawCoverage(mv, myCoverage)
                 drawFences(mv, fences)
+                if (showRoutes) drawRoutes(mv, routes, nodes, me)
+                predicted?.let { c ->
+                    mv.overlays += Polygon(mv).apply { points = Polygon.pointsAsCircle(GeoPoint(c.lat, c.lon), c.radiusM)
+                        fillPaint.color = AColor.argb(40, 46, 160, 67); outlinePaint.color = AColor.argb(200, 46, 160, 67); outlinePaint.strokeWidth = 4f; title = c.label }
+                }
                 waypoints.forEach { w ->
                     mv.overlays += Marker(mv).apply {
                         position = GeoPoint(w.lat, w.lon); title = w.name; snippet = w.description
@@ -177,7 +192,7 @@ fun MapScreen() {
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("● Meshtastic", color = StPaulMeshPalette.Meshtastic); Text("● MeshCore", color = StPaulMeshPalette.MeshCore); Text("● Reticulum", color = StPaulMeshPalette.Reticulum)
             }
-            Text(if (style == "SATELLITE" || style == "USGS_TOPO") "USGS The National Map" else "© OpenStreetMap contributors",
+            Text(if (style in setOf("SATELLITE", "USGS_TOPO", "HYBRID", "TERRAIN", "HYDRO")) "USGS The National Map" else "© OpenStreetMap contributors",
                 Modifier.align(Alignment.BottomEnd).padding(6.dp), style = MaterialTheme.typography.labelSmall)
         }
     }
@@ -190,17 +205,17 @@ fun MapScreen() {
                 if (w.expireMs > 0) "Expires ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(w.expireMs))}" else null).joinToString("\n")) },
             confirmButton = { TextButton(onClick = {
                 ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse("geo:${w.lat},${w.lon}?q=${w.lat},${w.lon}(${Uri.encode(w.name)})")))
-            }) { Text("Navigate") } },
+            }) { Text(tr("Navigate")) } },
             dismissButton = { TextButton(onClick = {
                 val wp = w; openWaypoint = null
                 kotlinx.coroutines.MainScope().launch { app.radios.deleteWaypoint(wp) }
-            }) { Text("Delete") } })
+            }) { Text(tr("Delete")) } })
     }
 }
 
 /** Long-press on the map: name a pin and share it with your Meshtastic channel. */
 @Composable
-private fun DropWaypointDialog(lat: Double, lon: Double, onDone: () -> Unit) {
+internal fun DropWaypointDialog(lat: Double, lon: Double, onDone: () -> Unit) {
     val app = HighbridgeApp.instance
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -209,26 +224,26 @@ private fun DropWaypointDialog(lat: Double, lon: Double, onDone: () -> Unit) {
     var hours by remember { mutableStateOf(24) }
     val canShare = ProtocolType.MESHTASTIC in app.radios.radios.collectAsState().value
     androidx.compose.material3.AlertDialog(onDismissRequest = onDone,
-        title = { Text("Drop a pin") },
+        title = { Text(tr("Drop a pin")) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("%.5f, %.5f".format(lat, lon), style = MaterialTheme.typography.labelMedium)
-            androidx.compose.material3.OutlinedTextField(name, { name = it.take(29) }, label = { Text("Name") }, singleLine = true)
-            androidx.compose.material3.OutlinedTextField(desc, { desc = it.take(99) }, label = { Text("Note (optional)") })
+            androidx.compose.material3.OutlinedTextField(name, { name = it.take(29) }, label = { Text(tr("Name")) }, singleLine = true)
+            androidx.compose.material3.OutlinedTextField(desc, { desc = it.take(99) }, label = { Text(tr("Note (optional)")) })
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(1 to "1 h", 24 to "1 day", 168 to "1 week", 0 to "Never").forEach { (h, l) -> FilterChip(hours == h, { hours = h }, { Text(l) }) }
             }
-            if (!canShare) Text("Connect a Meshtastic radio to share pins. The pin is kept on this phone either way.", style = MaterialTheme.typography.labelSmall)
+            if (!canShare) Text(tr("Connect a Meshtastic radio to share pins. The pin is kept on this phone either way."), style = MaterialTheme.typography.labelSmall)
         } },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
             scope.launch {
                 if (canShare) app.radios.shareWaypoint(ProtocolType.MESHTASTIC, name.trim(), desc.trim(), lat, lon, 0x1F4CD, hours)
-                    .onSuccess { ctx.toast("Pin shared") }.onFailure { ctx.toast(it.message, long = true) }
+                    .onSuccess { ctx.toast(tr("Pin shared")) }.onFailure { ctx.toast(it.message, long = true) }
                 else app.db.dao().upsertWaypoint(org.highbridge.app.data.WaypointEntity("LOCAL:${System.currentTimeMillis()}", "LOCAL", 0, name.trim(), desc.trim(), lat, lon, 0,
                     if (hours > 0) System.currentTimeMillis() + hours * 3_600_000L else 0L, "me", System.currentTimeMillis()))
                 onDone()
             }
         }) { Text(if (canShare) "Share" else "Save") } },
-        dismissButton = { TextButton(onClick = onDone) { Text("Cancel") } })
+        dismissButton = { TextButton(onClick = onDone) { Text(tr("Cancel")) } })
 }
 
 /** Your own wardriving samples: green strong, yellow fair, orange weak, red very weak, grey nothing heard. */
@@ -268,6 +283,9 @@ private fun applyStyle(mv: MapView, style: String, mbtiles: File?) {
         "TOPO" -> { mv.setUseDataConnection(true); mv.setTileSource(TileSourceFactory.OpenTopo) }
         "SATELLITE" -> { mv.setUseDataConnection(true); mv.setTileSource(UsgsTiles("USGSImageryOnly")) }
         "USGS_TOPO" -> { mv.setUseDataConnection(true); mv.setTileSource(UsgsTiles("USGSTopo")) }
+        "HYBRID" -> { mv.setUseDataConnection(true); mv.setTileSource(UsgsTiles("USGSImageryTopo")) }
+        "TERRAIN" -> { mv.setUseDataConnection(true); mv.setTileSource(UsgsTiles("USGSShadedReliefOnly")) }
+        "HYDRO" -> { mv.setUseDataConnection(true); mv.setTileSource(UsgsTiles("USGSHydroCached")) }
         "NIGHT" -> { mv.setUseDataConnection(true); mv.setTileSource(TileSourceFactory.MAPNIK); mv.overlayManager.tilesOverlay.setColorFilter(TilesOverlay.INVERT_COLORS) }
         else -> { mv.setUseDataConnection(true); mv.setTileSource(TileSourceFactory.MAPNIK) }
     }
@@ -332,4 +350,21 @@ private class UsgsTiles(private val layer: String) : org.osmdroid.tileprovider.t
 ) {
     override fun getTileURLString(pMapTileIndex: Long): String =
         baseUrl + org.osmdroid.util.MapTileIndex.getZoom(pMapTileIndex) + "/" + org.osmdroid.util.MapTileIndex.getY(pMapTileIndex) + "/" + org.osmdroid.util.MapTileIndex.getX(pMapTileIndex)
+}
+
+/** Draws each node's latest traceroute as a line through every hop whose position is known; dashed where a hop has no position. */
+private fun drawRoutes(mv: MapView, routes: List<org.highbridge.app.data.RouteEntity>, nodes: List<NodeEntity>, me: Pair<Double, Double>?) {
+    val pos = nodes.filter { it.lat != null && it.lon != null }.associate { "${it.protocol}|${it.id}" to GeoPoint(it.lat!!, it.lon!!) }
+    for (r in routes.distinctBy { it.protocol + it.destId }) {
+        val ids = r.hops.split(',').filter { it.isNotBlank() } + r.destId
+        val known = ids.map { pos["${r.protocol}|$it"] }
+        val pts = listOfNotNull(me?.let { GeoPoint(it.first, it.second) }) + known.filterNotNull()
+        if (pts.size < 2) continue
+        mv.overlays += Polyline(mv).apply {
+            setPoints(pts)
+            outlinePaint.color = protocolColorOf(r.protocol).toArgb(); outlinePaint.strokeWidth = 5f
+            if (known.any { it == null }) outlinePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(18f, 12f), 0f)
+            title = "Traceroute to ${r.destId}: ${ids.size - 1} hop${if (ids.size == 2) "" else "s"}" + (if (r.snrs.isNotBlank()) " · SNR ${r.snrs}" else "")
+        }
+    }
 }

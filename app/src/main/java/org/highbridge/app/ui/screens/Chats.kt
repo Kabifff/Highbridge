@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import org.highbridge.app.ui.toast
 import android.Manifest
 import android.content.pm.PackageManager
@@ -45,6 +47,12 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.AlternateEmail
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Badge
 import androidx.compose.material3.FloatingActionButton
@@ -125,7 +133,7 @@ fun ChatsScreen(openDrawer: () -> Unit) {
             IconButton(onClick = openDrawer) { Icon(Icons.Filled.Menu, "Menu") }
         })
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (radios.isEmpty()) TextButton(onClick = { nav.navigate("connect") }) { Text("Connect a radio") }
+            if (radios.isEmpty()) TextButton(onClick = { nav.navigate("connect") }) { Text(tr("Connect a radio")) }
             radios.values.forEach { r ->
                 val dev by r.deviceInfo.collectAsState()
                 Row(Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 10.dp, vertical = 6.dp),
@@ -139,14 +147,14 @@ fun ChatsScreen(openDrawer: () -> Unit) {
             if (st.isRunning) Row(Modifier.padding(horizontal = 20.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer)
                 .clickable { nav.navigate("bridge") }.padding(12.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text("Bridge is on", fontWeight = FontWeight.Bold)
+                    Text(tr("Bridge is on"), fontWeight = FontWeight.Bold)
                     Text("${st.activeMode.label} · ${st.forwardedCount} relayed", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         if (convs.isEmpty()) {
             EmptyState("No messages yet", if (radios.isEmpty()) "Connect a Meshtastic, MeshCore or RNode radio to start." else "Messages from your mesh will show up here.") {
-                if (radios.isNotEmpty()) TextButton(onClick = { radios.keys.first().let { nav.navigate("chat/${Uri.encode("${it.name}:ch:0")}") } }) { Text("Open the primary channel") }
+                if (radios.isNotEmpty()) TextButton(onClick = { radios.keys.first().let { nav.navigate("chat/${Uri.encode("${it.name}:ch:0")}") } }) { Text(tr("Open the primary channel")) }
             }
         }
         Box(Modifier.weight(1f)) {
@@ -154,10 +162,10 @@ fun ChatsScreen(openDrawer: () -> Unit) {
                 val (channels, dms) = convs.partition { it.conversation.split(':')[1] == "ch" }
                 // Every channel on a connected radio shows here, even before its first message.
                 val quiet = channelNames.keys.filter { k -> channels.none { it.conversation == k } }.sorted()
-                if (channels.isNotEmpty() || quiet.isNotEmpty()) item { SectionLabel("Channels") }
+                if (channels.isNotEmpty() || quiet.isNotEmpty()) item { SectionLabel(tr("Channels")) }
                 items(channels) { c -> ConversationRow(c.conversation, conversationTitle(c.conversation, names, channelNames), "${c.lastFrom}: ${c.lastText}", c.lastTime, c.unread) }
                 items(quiet) { k -> ConversationRow(k, conversationTitle(k, names, channelNames), "No messages yet", 0L, 0) }
-                if (dms.isNotEmpty()) item { SectionLabel("Direct messages") }
+                if (dms.isNotEmpty()) item { SectionLabel(tr("Direct messages")) }
                 items(dms) { c -> ConversationRow(c.conversation, conversationTitle(c.conversation, names, channelNames), c.lastText, c.lastTime, c.unread) }
             }
             if (radios.isNotEmpty()) FloatingActionButton(onClick = { newChat = true }, Modifier.align(Alignment.BottomEnd).padding(20.dp),
@@ -212,11 +220,14 @@ fun ChatScreen(conversation: String) {
     val reactions = remember(msgs) { msgs.filter { it.emoji && it.replyTo != null }.groupBy { it.replyTo!! } }
     val byPacket = remember(msgs) { msgs.associateBy { it.packetId } }
     var recording by remember { mutableStateOf(false) }
+    var live by remember { mutableStateOf(false) }
     var level by remember { mutableStateOf(0f) }
     val progress = remember { mutableStateMapOf<Int, Pair<Int, Int>>() }
     val list = rememberLazyListState()
 
-    DisposableEffect(conversation) { app.radios.openConversation = conversation; onDispose { app.radios.openConversation = null } }
+    DisposableEffect(conversation) { app.radios.openConversation = conversation; app.radios.clearNotification(conversation); onDispose { app.radios.openConversation = null } }
+    var bell by remember { mutableStateOf(false) }
+    var notifyLevel by remember(conversation) { mutableStateOf(app.prefs.notifyLevel(conversation)) }
     LaunchedEffect(shown.size) { app.db.dao().markRead(conversation); if (shown.isNotEmpty()) list.animateScrollToItem(shown.size) }
     LaunchedEffect(Unit) { app.radios.media.progress.collect { progress[it.transferId] = it.done to it.total } }
 
@@ -240,18 +251,30 @@ fun ChatScreen(conversation: String) {
 
     Column(Modifier.fillMaxSize().imePadding()) {
         HbHeader(title, stateLabel, onBack = { nav.popBackStack() }, skyline = true, actions = {
+            Box {
+                IconButton(onClick = { bell = true }) {
+                    Icon(when (notifyLevel) { "NONE" -> Icons.Filled.NotificationsOff; "MENTIONS" -> Icons.Filled.AlternateEmail; else -> Icons.Filled.Notifications },
+                        tr("Notifications for this chat"))
+                }
+                androidx.compose.material3.DropdownMenu(bell, { bell = false }) {
+                    listOf("ALL" to "Every message", "MENTIONS" to "Only when someone @mentions me", "NONE" to "Off (SOS still alerts)").forEach { (k, label) ->
+                        androidx.compose.material3.DropdownMenuItem({ Text((if (notifyLevel == k) "✓ " else "") + tr(label)) },
+                            { app.prefs.setNotifyLevel(conversation, k); notifyLevel = k; bell = false })
+                    }
+                }
+            }
             if (target.toNodeId == null) ChannelActions(target.protocol, target.channel, title)
         })
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { org.highbridge.app.ui.Gap(8) }
             items(shown, key = { it.rowId }) { m ->
-                MessageBubble(m, progress, reactions[m.packetId].orEmpty(), m.replyTo?.let { byPacket[it] }) { actionsFor = m }
+                MessageBubble(m, progress, reactions[m.packetId].orEmpty(), m.replyTo?.let { byPacket[it] }, !m.outgoing && app.radios.mentionsMe(m.text)) { actionsFor = m }
             }
         }
         replyTo?.let { q ->
             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp, 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Replying to ${q.fromName}: ${q.text}", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp)
-                TextButton(onClick = { replyTo = null }) { Text("Cancel") }
+                TextButton(onClick = { replyTo = null }) { Text(tr("Cancel")) }
             }
         }
         if (quick) Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -260,13 +283,27 @@ fun ChatScreen(conversation: String) {
             }
         }
         Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            IconButton(onClick = { quick = !quick }, enabled = radio != null) { Icon(Icons.Filled.Bolt, "Quick replies") }
-            IconButton(onClick = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, enabled = radio != null && target.protocol != ProtocolType.RETICULUM) {
-                Icon(Icons.Filled.Image, "Send a photo")
+            var more by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { more = true }, enabled = radio != null && !recording) {
+                    Icon(if (live) Icons.Filled.RecordVoiceOver else Icons.Filled.Add, "More: quick replies, photo, live talk",
+                        tint = if (live) MaterialTheme.colorScheme.tertiary else LocalContentColor.current)
+                }
+                androidx.compose.material3.DropdownMenu(more, { more = false }) {
+                    androidx.compose.material3.DropdownMenuItem({ Text(tr("Quick replies")) }, { more = false; quick = !quick }, leadingIcon = { Icon(Icons.Filled.Bolt, null) })
+                    if (target.protocol != ProtocolType.RETICULUM) {
+                        androidx.compose.material3.DropdownMenuItem({ Text(tr("Photo")) }, { more = false; pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            leadingIcon = { Icon(Icons.Filled.Image, null) })
+                        androidx.compose.material3.DropdownMenuItem({ Text((if (live) "✓ " else "") + tr("Live talk")) }, {
+                            more = false; live = !live
+                            ctx.toast(tr(if (live) "Live talk on: the mic button now streams as you speak. Best on fast presets." else "Live talk off: the mic button records a voice message."), long = true)
+                        }, leadingIcon = { Icon(Icons.Filled.RecordVoiceOver, null) })
+                    }
+                }
             }
             Column(Modifier.weight(1f)) {
                 OutlinedTextField(text, { if (it.toByteArray().size <= maxBytes) text = it }, Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    placeholder = { Text(if (recording) "Recording… tap stop to send" else "Message $title") }, enabled = !recording, maxLines = 4)
+                    placeholder = { Text(if (recording && live) "Live — talking… tap stop to end" else if (recording) "Recording… tap stop to send" else "Message $title") }, enabled = !recording, maxLines = 4)
                 Text("$left bytes left", Modifier.align(Alignment.End), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (text.isBlank()) {
@@ -274,7 +311,19 @@ fun ChatScreen(conversation: String) {
                     if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { micPerm.launch(Manifest.permission.RECORD_AUDIO); return@IconButton }
                     if (recording) { recording = false; return@IconButton }
                     recording = true
-                    scope.launch {
+                    if (live) scope.launch {
+                        // Live push-to-talk: one second at a time, played on the other end as it arrives.
+                        val session = (1..255).random(); var seq = 0
+                        val mine = ArrayList<Short>()
+                        runCatching {
+                            VoiceIO.stream({ !recording }, onLevel = { level = it }) { block ->
+                                mine.addAll(block.toList())
+                                app.radios.sendLiveBlock(conversation, session, seq++ and 0xFF, block).onFailure { recording = false; ctx.toast(it.message, long = true) }
+                            }
+                        }.onFailure { ctx.toast(it.message, long = true) }
+                        recording = false
+                        app.radios.saveLiveSent(conversation, mine.toShortArray())
+                    } else scope.launch {
                         val pcm = VoiceIO.record({ !recording }) { level = it }
                         recording = false
                         if (pcm.size > VoiceIO.SAMPLE_RATE / 2) app.radios.sendVoice(conversation, pcm).onFailure { ctx.toast(it.message, long = true) }
@@ -301,13 +350,18 @@ fun ChatScreen(conversation: String) {
                         scope.launch { app.radios.sendText(conversation, e, replyTo = m.packetId, emoji = true).onFailure { ctx.toast(it.message, long = true) } }
                     }, enabled = radio != null && !m.packetId.startsWith("pending")) { Text(e, fontSize = 20.sp) } }
                 }
-                TextButton(onClick = { replyTo = m; actionsFor = null }) { Text("Reply") }
-                TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(m.text)); actionsFor = null }) { Text("Copy text") }
+                TextButton(onClick = { replyTo = m; actionsFor = null }) { Text(tr("Reply")) }
+                if (!m.outgoing && target.toNodeId == null) TextButton(onClick = {
+                    val tag = "@[${m.fromName.substringBefore(" · ")}] "
+                    if (text.toByteArray().size + tag.toByteArray().size <= maxBytes) text = tag + text
+                    actionsFor = null
+                }) { Text("Mention ${m.fromName.substringBefore(" · ")}") }
+                TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(m.text)); actionsFor = null }) { Text(tr("Copy text")) }
                 if (m.status == 3) TextButton(onClick = { actionsFor = null; scope.launch {
-                    app.db.dao().deleteMessage(m.rowId); app.radios.sendText(conversation, m.text, m.replyTo).onFailure { ctx.toast(it.message, long = true) } } }) { Text("Send again") }
-                TextButton(onClick = { actionsFor = null; scope.launch { app.db.dao().deleteMessage(m.rowId) } }) { Text("Delete from this phone") }
+                    app.db.dao().deleteMessage(m.rowId); app.radios.sendText(conversation, m.text, m.replyTo).onFailure { ctx.toast(it.message, long = true) } } }) { Text(tr("Send again")) }
+                TextButton(onClick = { actionsFor = null; scope.launch { app.db.dao().deleteMessage(m.rowId) } }) { Text(tr("Delete from this phone")) }
             } },
-            confirmButton = { TextButton(onClick = { actionsFor = null }) { Text("Close") } })
+            confirmButton = { TextButton(onClick = { actionsFor = null }) { Text(tr("Close")) } })
     }
 }
 
@@ -316,17 +370,18 @@ private val QUICK_REPLIES = listOf("OK", "Copy that", "On my way", "Where are yo
 
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-private fun MessageBubble(m: MessageEntity, progress: Map<Int, Pair<Int, Int>>, reactions: List<MessageEntity>, quoted: MessageEntity?, onLongPress: () -> Unit) {
+private fun MessageBubble(m: MessageEntity, progress: Map<Int, Pair<Int, Int>>, reactions: List<MessageEntity>, quoted: MessageEntity?, mentionsMe: Boolean, onLongPress: () -> Unit) {
     val mine = m.outgoing
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
         if (!mine) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(m.fromName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-            if (m.viaBridge) Text("via bridge", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (m.viaBridge) Text(tr("via bridge"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             m.snr?.let { Text("SNR %.1f".format(it), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         Column(Modifier.widthIn(max = 300.dp).clip(RoundedCornerShape(if (mine) 12.dp else 4.dp, if (mine) 4.dp else 12.dp, 12.dp, 12.dp))
             .background(if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+            .then(if (mentionsMe) Modifier.border(2.dp, MaterialTheme.colorScheme.tertiary, RoundedCornerShape(4.dp, 12.dp, 12.dp, 12.dp)) else Modifier)
             .combinedClickable(onClick = {}, onLongClick = onLongPress).padding(10.dp)) {
             quoted?.let { q ->
                 Text("↪ ${q.fromName}: ${q.text}", Modifier.padding(bottom = 4.dp), fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,

@@ -111,6 +111,7 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
     override suspend fun disconnect() {
         heartbeat?.cancel()
         runCatching { link.send(ToRadio(disconnect = true).encode()) }
+        mqttProxy.stop()
         scope.cancel() // first, so the drop watcher doesn't report a user disconnect as an error
         link.close()
         _state.value = ConnectionState.Disconnected
@@ -134,16 +135,22 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
         f.config?.let { c ->
             val cur = _settings.value
             _settings.value = cur.copy(device = c.device ?: cur.device, position = c.position ?: cur.position, power = c.power ?: cur.power,
-                lora = c.lora ?: cur.lora, security = c.security ?: cur.security, network = c.network ?: cur.network, display = c.display ?: cur.display)
+                lora = c.lora ?: cur.lora, security = c.security ?: cur.security, network = c.network ?: cur.network, display = c.display ?: cur.display,
+        bluetooth = c.bluetooth ?: cur.bluetooth)
         }
         f.moduleConfig?.let { m ->
             val cur = _settings.value
             _settings.value = cur.copy(mqtt = m.mqtt ?: cur.mqtt, telemetry = m.telemetry ?: cur.telemetry, neighborInfo = m.neighbor_info ?: cur.neighborInfo,
                 storeForward = m.store_forward ?: cur.storeForward, rangeTest = m.range_test ?: cur.rangeTest, externalNotification = m.external_notification ?: cur.externalNotification,
-                cannedMessage = m.canned_message ?: cur.cannedMessage, detectionSensor = m.detection_sensor ?: cur.detectionSensor, paxcounter = m.paxcounter ?: cur.paxcounter)
+                cannedMessage = m.canned_message ?: cur.cannedMessage, detectionSensor = m.detection_sensor ?: cur.detectionSensor, paxcounter = m.paxcounter ?: cur.paxcounter, serial = m.serial ?: cur.serial, audio = m.audio ?: cur.audio,
+                remoteHardware = m.remote_hardware ?: cur.remoteHardware, ambientLighting = m.ambient_lighting ?: cur.ambientLighting, tak = m.tak ?: cur.tak,
+                trafficManagement = m.traffic_management ?: cur.trafficManagement)
         }
         f.log_record?.let { _events.emit(RadioEvent.Log(protocol, "${it.source}: ${it.message}")) }
-        if (f.config_complete_id != null && f.config_complete_id == configId) configDone.value = true
+        f.mqttClientProxyMessage?.let { m ->
+            mqttProxy.publish(m.topic, m.data_?.toByteArray() ?: m.text?.toByteArray() ?: ByteArray(0), m.retained)
+        }
+        if (f.config_complete_id != null && f.config_complete_id == configId) { configDone.value = true; refreshMqttProxy() }
         if (f.rebooted == true) { configDone.value = false; runCatching { link.send(ToRadio(want_config_id = configId).encode()) } }
         f.packet?.let { handlePacket(it) }
     }
@@ -228,7 +235,16 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
             PortNum.TRACEROUTE_APP -> if (d.request_id != 0) runCatching { RouteDiscovery.ADAPTER.decode(bytes) }.getOrNull()?.let { emitRoute(p.from, it) }
             PortNum.RANGE_TEST_APP -> _events.emit(RadioEvent.RangeTest(protocol, from, bytes.decodeToString(), snr, rssi, System.currentTimeMillis()))
             PortNum.ADMIN_APP -> runCatching { AdminMessage.ADAPTER.decode(bytes) }.getOrNull()?.let { a ->
-                a.get_config_response?.lora?.let { loraConfig = it }
+                if (a.session_passkey.size > 0) passkeys[p.from] = a.session_passkey
+                if (p.from != myNum) {
+                    // A remote node answering our remote-admin requests.
+                    val cur = _remote.value[from] ?: Settings()
+                    var next = cur
+                    a.get_config_response?.let { c -> next = merge(next, c) }
+                    a.get_module_config_response?.let { m -> next = mergeModule(next, m) }
+                    if (next !== cur) _remote.value = _remote.value + (from to next)
+                }
+                if (p.from == myNum) a.get_config_response?.lora?.let { loraConfig = it }
                 a.get_device_metadata_response?.let { _device.value = "Meshtastic ${it.firmware_version} · ${it.hw_model.name}" }
                 _events.emit(RadioEvent.AdminReply(protocol, from, a.toString().take(400)))
             }
@@ -301,6 +317,26 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
         sendData(0, BROADCAST, PortNum.RANGE_TEST_APP, "seq $seq".toByteArray(), wantAck = false)
     }
 
+    /** MQTT client proxy: runs while the radio's MQTT module asks for it (proxy to client enabled). */
+    val mqttProxy = MqttProxy(scope, { topic, payload, retained ->
+        link.send(ToRadio(mqttClientProxyMessage = org.meshtastic.proto.MqttClientProxyMessage(topic = topic, data_ = payload.toByteString(), retained = retained)).encode())
+    }, { _events.tryEmit(RadioEvent.Log(protocol, it)) })
+
+    /** Starts or stops the proxy to match the radio's MQTT settings and channels with downlink on. */
+    fun refreshMqttProxy() {
+        val m = _settings.value.mqtt
+        if (m == null || !m.enabled || !m.proxy_to_client_enabled) { mqttProxy.stop(); return }
+        val addr = m.address.ifBlank { MqttProxy.DEFAULT_HOST }
+        val host = addr.substringBefore(':')
+        val port = addr.substringAfter(':', "").toIntOrNull() ?: if (m.tls_enabled) 8883 else 1883
+        val root = m.root.ifBlank { "msh" }
+        val chans = channelSlots.values.filter { it.role != Channel.Role.DISABLED && it.settings?.downlink_enabled == true }
+            .map { it.settings?.name?.ifBlank { null } ?: "LongFast" }
+        val topics = (chans.flatMap { listOf("$root/2/e/$it/+") + if (m.json_enabled) listOf("$root/2/json/$it/+") else emptyList() } + "$root/2/e/PKI/+").distinct()
+        mqttProxy.start(MqttProxy.Config(host, port, m.tls_enabled, m.username.ifBlank { if (addr == MqttProxy.DEFAULT_HOST) MqttProxy.DEFAULT_USER else "" },
+            m.password.ifBlank { if (addr == MqttProxy.DEFAULT_HOST) MqttProxy.DEFAULT_PASS else "" }, "highbridge-" + (myNodeId.value ?: "x").removePrefix("!"), topics))
+    }
+
     /** Everything the radio reported about its settings during the handshake, kept current as you change it. */
     data class Settings(
         val device: Config.DeviceConfig? = null, val position: Config.PositionConfig? = null, val power: Config.PowerConfig? = null,
@@ -311,25 +347,122 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
         val rangeTest: org.meshtastic.proto.ModuleConfig.RangeTestConfig? = null, val externalNotification: org.meshtastic.proto.ModuleConfig.ExternalNotificationConfig? = null,
         val cannedMessage: org.meshtastic.proto.ModuleConfig.CannedMessageConfig? = null, val detectionSensor: org.meshtastic.proto.ModuleConfig.DetectionSensorConfig? = null,
         val paxcounter: org.meshtastic.proto.ModuleConfig.PaxcounterConfig? = null,
+        val serial: org.meshtastic.proto.ModuleConfig.SerialConfig? = null, val audio: org.meshtastic.proto.ModuleConfig.AudioConfig? = null,
+        val remoteHardware: org.meshtastic.proto.ModuleConfig.RemoteHardwareConfig? = null, val ambientLighting: org.meshtastic.proto.ModuleConfig.AmbientLightingConfig? = null,
+        val tak: org.meshtastic.proto.ModuleConfig.TAKConfig? = null,
+        val trafficManagement: org.meshtastic.proto.ModuleConfig.TrafficManagementConfig? = null,
+        val bluetooth: Config.BluetoothConfig? = null,
     )
     private val _settings = MutableStateFlow(Settings())
     val settings: StateFlow<Settings> = _settings
 
-    /** Writes one config section (device, position, power, network, display, security…) in an edit transaction. */
-    suspend fun setConfig(c: Config): Result<Unit> = runCatching {
+    private fun merge(cur: Settings, c: Config) = cur.copy(device = c.device ?: cur.device, position = c.position ?: cur.position, power = c.power ?: cur.power,
+        lora = c.lora ?: cur.lora, security = c.security ?: cur.security, network = c.network ?: cur.network, display = c.display ?: cur.display,
+        bluetooth = c.bluetooth ?: cur.bluetooth)
+    private fun mergeModule(cur: Settings, m: org.meshtastic.proto.ModuleConfig) = cur.copy(mqtt = m.mqtt ?: cur.mqtt, telemetry = m.telemetry ?: cur.telemetry,
+        neighborInfo = m.neighbor_info ?: cur.neighborInfo, storeForward = m.store_forward ?: cur.storeForward, rangeTest = m.range_test ?: cur.rangeTest,
+        externalNotification = m.external_notification ?: cur.externalNotification, cannedMessage = m.canned_message ?: cur.cannedMessage,
+        detectionSensor = m.detection_sensor ?: cur.detectionSensor, paxcounter = m.paxcounter ?: cur.paxcounter, serial = m.serial ?: cur.serial, audio = m.audio ?: cur.audio,
+                remoteHardware = m.remote_hardware ?: cur.remoteHardware, ambientLighting = m.ambient_lighting ?: cur.ambientLighting, tak = m.tak ?: cur.tak,
+                trafficManagement = m.traffic_management ?: cur.trafficManagement)
+
+    /**
+     * The whole radio setup as a Meshtastic DeviceProfile (the same .cfg format the official apps export):
+     * owner names, every config and module section, and canned messages.
+     */
+    fun exportProfile(longName: String?, shortName: String?): ByteArray {
+        val st = _settings.value
+        val cfg = org.meshtastic.proto.LocalConfig(device = st.device, position = st.position, power = st.power, network = st.network,
+            display = st.display, lora = st.lora, bluetooth = st.bluetooth, security = st.security)
+        val mods = org.meshtastic.proto.LocalModuleConfig(mqtt = st.mqtt, serial = st.serial, external_notification = st.externalNotification,
+            store_forward = st.storeForward, range_test = st.rangeTest, telemetry = st.telemetry, canned_message = st.cannedMessage, audio = st.audio,
+            remote_hardware = st.remoteHardware, neighbor_info = st.neighborInfo, ambient_lighting = st.ambientLighting,
+            detection_sensor = st.detectionSensor, paxcounter = st.paxcounter, traffic_management = st.trafficManagement, tak = st.tak)
+        return org.meshtastic.proto.DeviceProfile(long_name = longName, short_name = shortName, config = cfg, module_config = mods).encode()
+    }
+
+    /** Writes a DeviceProfile back to the radio in one edit transaction. The radio reboots afterwards. Returns the sections written. */
+    suspend fun importProfile(bytes: ByteArray, keepSecurity: Boolean = true): Result<Int> = runCatching {
+        val p = org.meshtastic.proto.DeviceProfile.ADAPTER.decode(bytes)
+        var n = 0
+        admin(AdminMessage(begin_edit_settings = true))
+        if (p.long_name != null || p.short_name != null) {
+            admin(AdminMessage(set_owner = User(long_name = p.long_name ?: "", short_name = p.short_name ?: ""))); n++
+        }
+        p.config?.let { c ->
+            listOfNotNull(c.device?.let { Config(device = it) }, c.position?.let { Config(position = it) }, c.power?.let { Config(power = it) },
+                c.network?.let { Config(network = it) }, c.display?.let { Config(display = it) }, c.lora?.let { Config(lora = it) },
+                c.bluetooth?.let { Config(bluetooth = it) }, c.security?.takeIf { !keepSecurity }?.let { Config(security = it) })
+                .forEach { admin(AdminMessage(set_config = it)); n++; kotlinx.coroutines.delay(300) }
+        }
+        p.module_config?.let { m ->
+            listOfNotNull(m.mqtt?.let { org.meshtastic.proto.ModuleConfig(mqtt = it) }, m.serial?.let { org.meshtastic.proto.ModuleConfig(serial = it) },
+                m.external_notification?.let { org.meshtastic.proto.ModuleConfig(external_notification = it) },
+                m.store_forward?.let { org.meshtastic.proto.ModuleConfig(store_forward = it) }, m.range_test?.let { org.meshtastic.proto.ModuleConfig(range_test = it) },
+                m.telemetry?.let { org.meshtastic.proto.ModuleConfig(telemetry = it) }, m.canned_message?.let { org.meshtastic.proto.ModuleConfig(canned_message = it) },
+                m.audio?.let { org.meshtastic.proto.ModuleConfig(audio = it) }, m.remote_hardware?.let { org.meshtastic.proto.ModuleConfig(remote_hardware = it) },
+                m.neighbor_info?.let { org.meshtastic.proto.ModuleConfig(neighbor_info = it) }, m.ambient_lighting?.let { org.meshtastic.proto.ModuleConfig(ambient_lighting = it) },
+                m.detection_sensor?.let { org.meshtastic.proto.ModuleConfig(detection_sensor = it) }, m.paxcounter?.let { org.meshtastic.proto.ModuleConfig(paxcounter = it) },
+                m.traffic_management?.let { org.meshtastic.proto.ModuleConfig(traffic_management = it) }, m.tak?.let { org.meshtastic.proto.ModuleConfig(tak = it) })
+                .forEach { admin(AdminMessage(set_module_config = it)); n++; kotlinx.coroutines.delay(300) }
+        }
+        p.canned_messages?.takeIf { it.isNotBlank() }?.let { admin(AdminMessage(set_canned_message_module_messages = it)); n++ }
+        admin(AdminMessage(commit_edit_settings = true))
+        n
+    }
+
+    /** Settings fetched from other nodes for remote administration, by node id. */
+    private val _remote = MutableStateFlow<Map<String, Settings>>(emptyMap())
+    val remoteSettings: StateFlow<Map<String, Settings>> = _remote
+    /** Firmware 2.5+: each remote admin write must carry the passkey from that node's last admin reply. */
+    private val passkeys = java.util.concurrent.ConcurrentHashMap<Int, okio.ByteString>()
+
+    /**
+     * Asks a remote node for its settings. It answers only if this radio's public key is in its admin keys
+     * (Settings › Security on that node) or it still has the legacy admin channel on.
+     */
+    suspend fun requestRemoteSettings(nodeId: String): Result<Unit> = runCatching {
+        val to = numOf(nodeId)
+        listOf(AdminMessage.ConfigType.DEVICE_CONFIG, AdminMessage.ConfigType.POSITION_CONFIG, AdminMessage.ConfigType.POWER_CONFIG,
+            AdminMessage.ConfigType.LORA_CONFIG, AdminMessage.ConfigType.SECURITY_CONFIG).forEach { admin(AdminMessage(get_config_request = it), to); kotlinx.coroutines.delay(1500) }
+        listOf(AdminMessage.ModuleConfigType.MQTT_CONFIG, AdminMessage.ModuleConfigType.TELEMETRY_CONFIG, AdminMessage.ModuleConfigType.NEIGHBORINFO_CONFIG,
+            AdminMessage.ModuleConfigType.STOREFORWARD_CONFIG, AdminMessage.ModuleConfigType.RANGETEST_CONFIG, AdminMessage.ModuleConfigType.EXTNOTIF_CONFIG,
+            AdminMessage.ModuleConfigType.SERIAL_CONFIG, AdminMessage.ModuleConfigType.AUDIO_CONFIG, AdminMessage.ModuleConfigType.REMOTEHARDWARE_CONFIG,
+            AdminMessage.ModuleConfigType.AMBIENTLIGHTING_CONFIG, AdminMessage.ModuleConfigType.DETECTIONSENSOR_CONFIG, AdminMessage.ModuleConfigType.PAXCOUNTER_CONFIG,
+            AdminMessage.ModuleConfigType.TRAFFICMANAGEMENT_CONFIG, AdminMessage.ModuleConfigType.TAK_CONFIG)
+            .forEach { admin(AdminMessage(get_module_config_request = it), to); kotlinx.coroutines.delay(1500) }
+    }
+
+    /** Writes one config section (device, position, power, network, display, security…) in an edit transaction. [target] = a remote node. */
+    suspend fun setConfig(c: Config, target: String? = null): Result<Unit> = runCatching {
+        if (target != null) {
+            val to = numOf(target)
+            admin(AdminMessage(set_config = c), to)
+            _remote.value = _remote.value + (target to merge(_remote.value[target] ?: Settings(), c))
+            return@runCatching
+        }
         admin(AdminMessage(begin_edit_settings = true)); admin(AdminMessage(set_config = c)); admin(AdminMessage(commit_edit_settings = true))
         val cur = _settings.value
         _settings.value = cur.copy(device = c.device ?: cur.device, position = c.position ?: cur.position, power = c.power ?: cur.power,
-            lora = c.lora ?: cur.lora, security = c.security ?: cur.security, network = c.network ?: cur.network, display = c.display ?: cur.display)
+            lora = c.lora ?: cur.lora, security = c.security ?: cur.security, network = c.network ?: cur.network, display = c.display ?: cur.display,
+        bluetooth = c.bluetooth ?: cur.bluetooth)
     }
 
     /** Writes one module section (MQTT, telemetry, neighbour info, store & forward, range test…). */
-    suspend fun setModule(m: org.meshtastic.proto.ModuleConfig): Result<Unit> = runCatching {
+    suspend fun setModule(m: org.meshtastic.proto.ModuleConfig, target: String? = null): Result<Unit> = runCatching {
+        if (target != null) {
+            admin(AdminMessage(set_module_config = m), numOf(target))
+            _remote.value = _remote.value + (target to mergeModule(_remote.value[target] ?: Settings(), m))
+            return@runCatching
+        }
         admin(AdminMessage(begin_edit_settings = true)); admin(AdminMessage(set_module_config = m)); admin(AdminMessage(commit_edit_settings = true))
         val cur = _settings.value
         _settings.value = cur.copy(mqtt = m.mqtt ?: cur.mqtt, telemetry = m.telemetry ?: cur.telemetry, neighborInfo = m.neighbor_info ?: cur.neighborInfo,
             storeForward = m.store_forward ?: cur.storeForward, rangeTest = m.range_test ?: cur.rangeTest, externalNotification = m.external_notification ?: cur.externalNotification,
-            cannedMessage = m.canned_message ?: cur.cannedMessage, detectionSensor = m.detection_sensor ?: cur.detectionSensor, paxcounter = m.paxcounter ?: cur.paxcounter)
+            cannedMessage = m.canned_message ?: cur.cannedMessage, detectionSensor = m.detection_sensor ?: cur.detectionSensor, paxcounter = m.paxcounter ?: cur.paxcounter, serial = m.serial ?: cur.serial, audio = m.audio ?: cur.audio,
+                remoteHardware = m.remote_hardware ?: cur.remoteHardware, ambientLighting = m.ambient_lighting ?: cur.ambientLighting, tak = m.tak ?: cur.tak,
+                trafficManagement = m.traffic_management ?: cur.trafficManagement)
+        if (m.mqtt != null) refreshMqttProxy()
     }
 
     /** Favourite / ignore on the radio itself, so it also affects what the radio shows and relays to you. */
@@ -340,6 +473,11 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
         val n = numOf(nodeId); admin(if (ignored) AdminMessage(set_ignored_node = n) else AdminMessage(remove_ignored_node = n))
     }
     suspend fun shutdown(): Result<Unit> = runCatching { admin(AdminMessage(shutdown_seconds = 2)) }
+    /** Reboots an ESP32 radio into its OTA loader, which will only accept an image with this SHA-256. */
+    suspend fun rebootToOta(wifi: Boolean, sha256: ByteArray): Result<Unit> = runCatching {
+        admin(AdminMessage(ota_request = AdminMessage.OTAEvent(reboot_ota_mode = if (wifi) org.meshtastic.proto.OTAMode.OTA_WIFI else org.meshtastic.proto.OTAMode.OTA_BLE,
+            ota_hash = sha256.toByteString())))
+    }
     /**
      * Licensed (ham) mode: your call sign becomes the node name, encryption is turned off as FCC Part 97
      * requires, and power limits follow your license instead of Part 15. [frequencyMHz] 0 = keep the current one.
@@ -355,9 +493,15 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
     suspend fun factoryReset(device: Boolean): Result<Unit> = runCatching { admin(if (device) AdminMessage(factory_reset_device = 1) else AdminMessage(factory_reset_config = 1)) }
     suspend fun setCannedMessages(messages: String): Result<Unit> = runCatching { admin(AdminMessage(set_canned_message_module_messages = messages.take(200))) }
 
-    private suspend fun admin(msg: AdminMessage) {
-        sendData(0, myNum, PortNum.ADMIN_APP, msg.encode(), wantAck = true, wantResponse = true)
+    private suspend fun admin(msg: AdminMessage, to: Int = myNum) {
+        val withKey = passkeys[to]?.let { msg.copy(session_passkey = it) } ?: msg
+        // Remote admin goes on the "admin" channel if one exists (legacy), otherwise on 0 with PKI encryption.
+        val ch = if (to == myNum) 0 else channelSlots.values.firstOrNull { it.settings?.name.equals("admin", true) }?.index ?: 0
+        sendData(ch, to, PortNum.ADMIN_APP, withKey.encode(), wantAck = true, wantResponse = true)
     }
+
+    /** Restart, shut down or reset a remote node (needs admin rights there). */
+    suspend fun remoteAction(nodeId: String, msg: AdminMessage): Result<Unit> = runCatching { admin(msg, numOf(nodeId)) }
 
     override suspend fun applyChannel(channel: EncryptedChannel): Result<Unit> = runCatching {
         require(channel.protocol == ProtocolType.MESHTASTIC)

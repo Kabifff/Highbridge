@@ -29,6 +29,9 @@ object MC {
     const val PUSH_STATUS_RESPONSE = 0x87; const val PUSH_TRACE_DATA = 0x89; const val PUSH_NEW_ADVERT = 0x8A
     const val PUSH_TELEMETRY_RESPONSE = 0x8B
     const val PUSH_LOG_RX_DATA = 0x88
+    const val CMD_SET_FLOOD_SCOPE = 54
+    /** Region transport key: first 16 bytes of SHA-256("#" + name), name case kept as typed. */
+    fun regionKey(bareName: String): ByteArray = java.security.MessageDigest.getInstance("SHA-256").digest(("#" + bareName).toByteArray()).copyOf(16)
     const val PAYLOAD_GRP_TXT = 0x05
 
     /** One on-air packet from the RX log push: SNR/RSSI plus the parts of the raw packet we need. */

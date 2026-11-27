@@ -39,6 +39,10 @@ class Prefs(ctx: Context) {
     val wardriveHideM = state(sp.getInt("wdHideM", 400))
     /** Asked once, at the first Start, whether to share coverage. Until then nothing is uploaded. */
     val wardriveAsked = state(sp.getBoolean("wdAsked", false))
+    /** MeshCore region scope applied on every connect ("" = unscoped). */
+    val mcRegion = state(sp.getString("mcRegion", "") ?: "")
+    /** Per-conversation notifications: "ALL", "MENTIONS" or "NONE", stored as conv=level lines. */
+    val notifyLevels = state(sp.getString("notifyLevels", "") ?: "")
 
     private fun save(block: SharedPreferences.Editor.() -> Unit) = sp.edit().apply(block).apply()
 
@@ -61,6 +65,12 @@ class Prefs(ctx: Context) {
     fun setWardriveHome(v: String) { wardriveHome.value = v; save { putString("wdHome", v) } }
     fun setWardriveHideM(v: Int) { wardriveHideM.value = v; save { putInt("wdHideM", v) } }
     fun setWardriveAsked(v: Boolean) { wardriveAsked.value = v; save { putBoolean("wdAsked", v) } }
+    fun setMcRegion(v: String) { mcRegion.value = v; save { putString("mcRegion", v) } }
+    fun notifyLevel(conv: String): String = notifyLevels.value.lineSequence().firstOrNull { it.startsWith("$conv=") }?.substringAfter('=') ?: "ALL"
+    fun setNotifyLevel(conv: String, level: String) {
+        val v = (notifyLevels.value.lineSequence().filter { it.isNotBlank() && !it.startsWith("$conv=") } + if (level == "ALL") emptySequence() else sequenceOf("$conv=$level")).joinToString("\n")
+        notifyLevels.value = v; save { putString("notifyLevels", v) }
+    }
     /** "BLE|MESHTASTIC|AA:BB:..." or "USB|AUTO|vid:pid", used to reconnect after a reboot. */
     fun rememberDevice(entry: String) {
         val kind = entry.substringBefore('|') + "|" + entry.split('|').getOrNull(1)

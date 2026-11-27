@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.tr
+
 import android.content.Intent
 import android.net.Uri
 import android.view.WindowManager
@@ -78,18 +80,18 @@ fun WardriveScreen() {
     var askShare by remember { mutableStateOf(false) }
     // Prominent disclosure and consent before any location leaves the phone.
     if (askShare) androidx.compose.material3.AlertDialog(onDismissRequest = { askShare = false },
-        title = { Text("Share your coverage?") },
+        title = { Text(tr("Share your coverage?")) },
         text = { Text("While wardriving, Highbridge uses your precise location, also with the screen off, to record where your radio hears the mesh. " +
             "If you share, it sends stpaulmesh.com your position rounded to about 10 m, the time and signal readings, for the public coverage map. " +
             "No names, node IDs or device details are sent. You can change this any time on this screen.") },
         confirmButton = { TextButton(onClick = {
             askShare = false; app.prefs.setWardriveUpload(true); app.prefs.setWardriveAsked(true)
             runCatching { wd.start(proto) }.onFailure { ctx.toast(it.message, long = true) }
-        }) { Text("Share and start") } },
+        }) { Text(tr("Share and start")) } },
         dismissButton = { TextButton(onClick = {
             askShare = false; app.prefs.setWardriveUpload(false); app.prefs.setWardriveAsked(true)
             runCatching { wd.start(proto) }.onFailure { ctx.toast(it.message, long = true) }
-        }) { Text("Keep on my phone") } })
+        }) { Text(tr("Keep on my phone")) } })
 
     // Keep the screen on while this screen is open and recording, like a dash-mounted map.
     DisposableEffect(st.running) {
@@ -102,8 +104,8 @@ fun WardriveScreen() {
 
     LazyColumn {
         item {
-            HbHeader("Wardriving", "Map where the mesh reaches", onBack = { nav.popBackStack() }, actions = {
-                TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(wd.coverageUrl(proto)))) }) { Text("Live map") }
+            HbHeader(tr("Wardriving"), tr("Map where the mesh reaches"), onBack = { nav.popBackStack() }, actions = {
+                TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(wd.coverageUrl(proto)))) }) { Text(tr("Live map")) }
             })
         }
         item {
@@ -128,9 +130,9 @@ fun WardriveScreen() {
                         if (proto !in radios) ctx.toast("Connect your ${if (proto == ProtocolType.MESHCORE) "MeshCore" else "Meshtastic"} radio first", long = true)
                         else if (!app.prefs.wardriveAsked.value) askShare = true
                         else runCatching { wd.start(proto) }.onFailure { ctx.toast(it.message, long = true) }
-                    }) { Text("Start") }
-                    else Button(onClick = { wd.stop() }) { Text("Stop") }
-                    if (upload) OutlinedButton(onClick = { scope.launch { wd.upload(proto).onSuccess { ctx.toast("Shared $it samples") }.onFailure { ctx.toast(it.message, long = true) } } }) { Text("Share now") }
+                    }) { Text(tr("Start")) }
+                    else Button(onClick = { wd.stop() }) { Text(tr("Stop")) }
+                    if (upload) OutlinedButton(onClick = { scope.launch { wd.upload(proto).onSuccess { ctx.toast("Shared $it samples") }.onFailure { ctx.toast(it.message, long = true) } } }) { Text(tr("Share now")) }
                 }
             }
         }
@@ -152,7 +154,7 @@ fun WardriveScreen() {
                     .forEach { (c, l) -> Text("● $l", color = c, fontSize = 12.sp) }
             }
         }
-        item { SectionLabel("How it works") }
+        item { SectionLabel(tr("How it works")) }
         item {
             Text(
                 (if (proto == ProtocolType.MESHCORE)
@@ -162,51 +164,51 @@ fun WardriveScreen() {
                     " Pings stop near your region's airtime limit.",
                 Modifier.padding(horizontal = 16.dp), fontSize = 13.sp)
         }
-        item { SectionLabel("Settings") }
+        item { SectionLabel(tr("Settings")) }
         item {
             Column(Modifier.padding(horizontal = 16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Send pings")
-                        Text("Measures where the mesh hears you. Off = listen only, no airtime.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tr("Send pings"))
+                        Text(tr("Measures where the mesh hears you. Off = listen only, no airtime."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(ping, { app.prefs.setWardrivePing(it) })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Share with the stpaulmesh.com map")
-                        Text("Sends position (rounded to about 10 m), time and signal only. No names, node IDs or anything about you.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tr("Share with the stpaulmesh.com map"))
+                        Text(tr("Sends position (rounded to about 10 m), time and signal only. No names, node IDs or anything about you."), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(upload, { app.prefs.setWardriveUpload(it) })
                 }
-                Text("Home privacy circle", Modifier.padding(top = 8.dp))
+                Text(tr("Home privacy circle"), Modifier.padding(top = 8.dp))
                 Text(if (home.isBlank()) "Not set. Set it at home so nothing is recorded within $hideM m of your house."
                     else "Nothing is recorded within $hideM m of your home.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     TextButton(onClick = {
                         val p = st.fix ?: me
-                        if (p == null) ctx.toast("Waiting for your location") else { app.prefs.setWardriveHome("%.5f,%.5f".format(java.util.Locale.US, p.first, p.second)); ctx.toast("Home circle set here") }
-                    }) { Text("I'm home: set it here") }
-                    if (home.isNotBlank()) TextButton(onClick = { app.prefs.setWardriveHome("") }) { Text("Clear") }
+                        if (p == null) ctx.toast(tr("Waiting for your location")) else { app.prefs.setWardriveHome("%.5f,%.5f".format(java.util.Locale.US, p.first, p.second)); ctx.toast(tr("Home circle set here")) }
+                    }) { Text(tr("I'm home: set it here")) }
+                    if (home.isNotBlank()) TextButton(onClick = { app.prefs.setWardriveHome("") }) { Text(tr("Clear")) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(200, 400, 800).forEach { m -> FilterChip(hideM == m, { app.prefs.setWardriveHideM(m) }, { Text("$m m") }) }
                 }
             }
         }
-        item { SectionLabel("Your sessions") }
-        if (sessions.isEmpty()) item { Text("None yet.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp) }
+        item { SectionLabel(tr("Your sessions")) }
+        if (sessions.isEmpty()) item { Text(tr("None yet."), Modifier.padding(horizontal = 16.dp), fontSize = 13.sp) }
         items(sessions, key = { it.session }) { s ->
             Row(Modifier.fillMaxWidth().padding(16.dp, 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("${if (s.protocol == "MESHCORE") "MeshCore" else "Meshtastic"} · ${timeAgo(s.firstMs)}", fontWeight = FontWeight.Bold)
                     Text("${s.samples} samples · ${(s.lastMs - s.firstMs) / 60_000} min" + if (s.pending > 0) " · ${s.pending} not shared yet" else "", fontSize = 12.sp)
                 }
-                TextButton(onClick = { scope.launch { app.db.dao().deleteWardriveSession(s.session) } }) { Text("Delete") }
+                TextButton(onClick = { scope.launch { app.db.dao().deleteWardriveSession(s.session) } }) { Text(tr("Delete")) }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         }
-        item { Text("Deleting a session removes it from this phone. Coverage already shared stays on the map, mixed with everyone else's.",
+        item { Text(tr("Deleting a session removes it from this phone. Coverage already shared stays on the map, mixed with everyone else's."),
             Modifier.padding(16.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
