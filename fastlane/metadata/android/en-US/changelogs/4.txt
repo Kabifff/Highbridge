@@ -1,6 +1,6 @@
 - New chat button: message anyone directly, start a private channel on Meshtastic, MeshCore or Reticulum, or join a MeshCore #channel
 - Every channel on your radio now shows in Chats, even before its first message
-- Share a channel by QR code or leave it from inside the chat
+- Share or leave a channel from inside the chat
 - Scans MeshCore app channel codes too
-- Firmware updates: finds newer Meshtastic builds, shows every file with a board search, and links to the web flashers
+- Firmware updates: finds newer Meshtastic builds, shows every file with a board search
 - Connect screen: radios stay in place instead of reshuffling by signal
