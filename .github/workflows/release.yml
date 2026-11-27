@@ -34,7 +34,10 @@ jobs:
           HB_KEYSTORE_PASSWORD: ${{ secrets.HB_KEYSTORE_PASSWORD }}
           HB_KEY_ALIAS: ${{ secrets.HB_KEY_ALIAS }}
           HB_KEY_PASSWORD: ${{ secrets.HB_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon :app:testLiteDebugUnitTest bundleLiteRelease assembleLiteRelease assembleFullRelease
+        run: |
+          ./gradlew --no-daemon :app:testLiteDebugUnitTest assembleLiteRelease assembleFullRelease
+          # The Play bundle leaves out tip links (Google Play payments policy); built separately with its own flag.
+          ./gradlew --no-daemon -Phb.play=true bundleLiteRelease
       - name: Collect
         run: |
           mkdir out

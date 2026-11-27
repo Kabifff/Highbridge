@@ -106,7 +106,7 @@ fun AprsScreen() {
                 Modifier.padding(20.dp, 4.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (aprs != null) item {
-            HbCard(Modifier.padding(16.dp, 4.dp)) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            HbCard(Modifier.padding(16.dp, 4.dp)) { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(dev ?: "APRS", fontWeight = FontWeight.Bold)
                 Text(if (aprs.canTransmit) tr("Sending and receiving") else if (verified) "" else tr("Listening only: APRS-IS didn't accept the call sign, and there's no TNC"), fontSize = 12.sp)
                 me?.let { Text(tr("Your grid square") + ": " + Geo.maidenhead(it.first, it.second), fontSize = 12.sp) }
@@ -265,7 +265,7 @@ fun CallsignScreen(initial: String = "") {
                 Button(onClick = { go() }, enabled = call.length >= 3 && !busy) { Text(tr("Look up")) }
             }
             result?.onSuccess { i ->
-                HbCard { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                HbCard { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(i.call, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
                     if (i.name.isNotBlank()) Text(i.name, fontWeight = FontWeight.Bold)
                     CallsignLookup.className(i.licenseClass)?.let { Text(tr("License") + ": $it") }
@@ -286,7 +286,7 @@ fun AprsStationDetails(call: String) {
     val app = HighbridgeApp.instance
     val nav = LocalNav.current
     val st = (app.radios.aprs?.stations ?: MutableStateFlow(emptyMap())).collectAsState().value[call]
-    HbCard { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    HbCard { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (st != null) {
             Text(AprsFormat.symbolName(st.symbol), fontWeight = FontWeight.Bold)
             if (st.comment.isNotBlank()) Text(st.comment)

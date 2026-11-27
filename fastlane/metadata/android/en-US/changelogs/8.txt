@@ -1,0 +1,2 @@
+- New About us page: Highbridge is brought to you by the St. Paul Radio Authority, with its companion site stpaulmesh.com and links to our Discord, Signal and Facebook groups
+- New How to help page: the radios we use, and other ways to pitch in, from sharing the websites to hosting a meetup or a rooftop node

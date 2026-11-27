@@ -153,7 +153,7 @@ fun CoveragePredictScreen() {
     LazyColumn(Modifier.fillMaxSize()) {
         item { HbHeader(tr("Coverage prediction"), tr("How far a node should reach, before you climb the ladder"), onBack = { nav.popBackStack() }) }
         item {
-            HbCard(Modifier.padding(16.dp, 4.dp)) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            HbCard(Modifier.padding(16.dp, 4.dp)) { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("About ${Geo.formatDistance(r.rangeKm * 1000, metric)}", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
                 Text(if (r.limitedByHorizon) "Limited by the radio horizon: raise either antenna to reach further." else "Limited by signal strength over this ground: more gain or height helps.", fontSize = 13.sp)
                 Text(tr("Link budget %.0f dB · sensitivity %.0f dBm").format(r.budgetDb, r.sensitivityDbm), fontSize = 12.sp)

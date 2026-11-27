@@ -28,6 +28,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Key
@@ -155,6 +157,8 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                     NavigationDrawerItem(label = { Text(tr("USB terminal & flashing")) }, icon = { Icon(Icons.Filled.Usb, null) }, selected = false, onClick = { go("usb") })
                     NavigationDrawerItem(label = { Text(tr("Firmware updates")) }, icon = { Icon(Icons.Filled.SettingsInputAntenna, null) }, selected = false, onClick = { go("updates") })
                     NavigationDrawerItem(label = { Text(tr("Settings")) }, icon = { Icon(Icons.Filled.Settings, null) }, selected = false, onClick = { go("settings") })
+                    NavigationDrawerItem(label = { Text(tr("About us")) }, icon = { Icon(Icons.Filled.Info, null) }, selected = false, onClick = { go("about") })
+                    NavigationDrawerItem(label = { Text(tr("How to help")) }, icon = { Icon(Icons.Filled.Favorite, null) }, selected = false, onClick = { go("help") })
                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
                     fun open(url: String) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
                     NavigationDrawerItem(label = { Text("stpaulmesh.com") }, selected = false, onClick = { open("https://stpaulmesh.com") })
@@ -214,6 +218,8 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                         composable("predict") { org.highbridge.app.ui.screens.CoveragePredictScreen() }
                         composable("ar") { org.highbridge.app.ui.screens.ArScreen() }
                         composable("aprs") { org.highbridge.app.ui.screens.AprsScreen() }
+                        composable("about") { org.highbridge.app.ui.screens.AboutUsScreen() }
+                        composable("help") { org.highbridge.app.ui.screens.HowToHelpScreen() }
                         composable("callsign") { org.highbridge.app.ui.screens.CallsignScreen() }
                         composable("callsign/{c}") { b -> org.highbridge.app.ui.screens.CallsignScreen(Uri.decode(b.arguments?.getString("c") ?: "")) }
                     }

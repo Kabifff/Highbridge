@@ -192,6 +192,10 @@ fun SettingsScreen() {
                 }
             }
             SectionLabel(tr("About"), Modifier.padding(0.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { nav.navigate("about") }) { Text(tr("About us")) }
+                OutlinedButton(onClick = { nav.navigate("help") }) { Text(tr("How to help")) }
+            }
             Text(tr("Highbridge is named for Saint Paul's High Bridge, which joins West 7th to the West Side bluffs."), style = MaterialTheme.typography.bodyMedium)
             Text(LEGAL_NOTICE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
