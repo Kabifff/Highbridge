@@ -37,6 +37,8 @@ class Prefs(ctx: Context) {
     val wardrivePing = state(sp.getBoolean("wdPing", true))
     val wardriveHome = state(sp.getString("wdHome", "") ?: "")
     val wardriveHideM = state(sp.getInt("wdHideM", 400))
+    /** Asked once, at the first Start, whether to share coverage. Until then nothing is uploaded. */
+    val wardriveAsked = state(sp.getBoolean("wdAsked", false))
 
     private fun save(block: SharedPreferences.Editor.() -> Unit) = sp.edit().apply(block).apply()
 
@@ -58,6 +60,7 @@ class Prefs(ctx: Context) {
     fun setWardrivePing(v: Boolean) { wardrivePing.value = v; save { putBoolean("wdPing", v) } }
     fun setWardriveHome(v: String) { wardriveHome.value = v; save { putString("wdHome", v) } }
     fun setWardriveHideM(v: Int) { wardriveHideM.value = v; save { putInt("wdHideM", v) } }
+    fun setWardriveAsked(v: Boolean) { wardriveAsked.value = v; save { putBoolean("wdAsked", v) } }
     /** "BLE|MESHTASTIC|AA:BB:..." or "USB|AUTO|vid:pid", used to reconnect after a reboot. */
     fun rememberDevice(entry: String) {
         val kind = entry.substringBefore('|') + "|" + entry.split('|').getOrNull(1)

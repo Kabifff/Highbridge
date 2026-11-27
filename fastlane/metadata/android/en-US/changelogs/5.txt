@@ -1,0 +1,7 @@
+- Wardriving for Meshtastic and MeshCore, with a live coverage map on stpaulmesh.com
+- Replies, emoji reactions, quick replies and message search
+- Shared map pins (waypoints), satellite and USGS topo maps
+- All Meshtastic radio and module settings, including MQTT and ham mode
+- MeshCore adverts, contact QR codes and telemetry
+- Favorites and ignored nodes
+- Your messages are now kept safely through app updates

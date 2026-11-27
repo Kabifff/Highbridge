@@ -226,7 +226,11 @@ fun SearchScreen() {
         results = if (q.trim().length < 2) emptyList() else app.db.dao().searchMessages(q.trim())
     }
     Column {
-        org.highbridge.app.ui.HbHeader("Search messages", "All networks", onBack = { nav.popBackStack() })
+        val ctx = LocalContext.current
+        val scope = rememberCoroutineScope()
+        org.highbridge.app.ui.HbHeader("Search messages", "All networks", onBack = { nav.popBackStack() }, actions = {
+            TextButton(onClick = { scope.launch { exportMessagesCsv(ctx) } }) { Text("Export CSV") }
+        })
         OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().padding(16.dp, 4.dp), label = { Text("Search") }, singleLine = true)
         if (q.trim().length >= 2 && results.isEmpty()) Text("No messages match.", Modifier.padding(16.dp))
         LazyColumn {
@@ -243,4 +247,23 @@ fun SearchScreen() {
             }
         }
     }
+}
+
+/** Every message as a CSV file, shared through Android's share sheet (for records, spreadsheets or other apps). */
+suspend fun exportMessagesCsv(ctx: android.content.Context) {
+    val all = HighbridgeApp.instance.db.dao().recentMessages(100_000).filter { !it.emoji }.sortedBy { it.timeMs }
+    fun q(v: String) = "\"" + v.replace("\"", "\"\"") + "\""
+    val csv = buildString {
+        append("time_utc,network,conversation,from_id,from_name,direction,status,snr,text\n")
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+        all.forEach { m ->
+            append(listOf(fmt.format(java.util.Date(m.timeMs)), m.protocol, m.conversation, m.fromId, m.fromName,
+                if (m.outgoing) "sent" else "received", m.status.toString(), m.snr?.toString() ?: "", m.text).joinToString(",") { q(it) }).append('\n')
+        }
+    }
+    val f = java.io.File(ctx.cacheDir, "exports").apply { mkdirs() }.let { java.io.File(it, "highbridge-messages.csv") }
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { f.writeText(csv) }
+    val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/csv").putExtra(Intent.EXTRA_STREAM, uri)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Export messages"))
 }

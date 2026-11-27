@@ -59,6 +59,8 @@ It's named for Saint Paul's High Bridge, which joins the West 7th neighborhood t
   - GPS every 35 s (Fast) or every 5 min (Battery Saving)
   - Performance, Balanced and Ultra-Low Power profiles, with an automatic switch at low battery
 
+See [FEATURES.md](FEATURES.md) for how Highbridge compares with the official Meshtastic and MeshCore apps and MeshWave.
+
 ## Editions
 
 | Edition | Networks | Where | Build task |

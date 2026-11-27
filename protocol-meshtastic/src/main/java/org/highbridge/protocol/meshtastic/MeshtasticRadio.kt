@@ -340,6 +340,16 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
         val n = numOf(nodeId); admin(if (ignored) AdminMessage(set_ignored_node = n) else AdminMessage(remove_ignored_node = n))
     }
     suspend fun shutdown(): Result<Unit> = runCatching { admin(AdminMessage(shutdown_seconds = 2)) }
+    /**
+     * Licensed (ham) mode: your call sign becomes the node name, encryption is turned off as FCC Part 97
+     * requires, and power limits follow your license instead of Part 15. [frequencyMHz] 0 = keep the current one.
+     */
+    suspend fun setHamMode(callSign: String, txPowerDbm: Int, frequencyMHz: Float = 0f): Result<Unit> = runCatching {
+        val cs = callSign.trim().uppercase()
+        require(Regex("^[A-Z0-9]{1,3}[0-9][A-Z0-9]{0,4}$").matches(cs)) { "That doesn't look like a call sign" }
+        admin(AdminMessage(set_ham_mode = org.meshtastic.proto.HamParameters(call_sign = cs, tx_power = txPowerDbm, frequency = frequencyMHz,
+            short_name = cs.takeLast(4), long_name = cs)))
+    }
     suspend fun nodeDbReset(): Result<Unit> = runCatching { admin(AdminMessage(nodedb_reset = true)) }
     /** Erases all settings (keeps nothing but the firmware). [device] = also erase keys and the node database. */
     suspend fun factoryReset(device: Boolean): Result<Unit> = runCatching { admin(if (device) AdminMessage(factory_reset_device = 1) else AdminMessage(factory_reset_config = 1)) }

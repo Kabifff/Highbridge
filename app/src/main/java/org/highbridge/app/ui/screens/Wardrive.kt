@@ -75,6 +75,21 @@ fun WardriveScreen() {
     val choices = listOf(ProtocolType.MESHTASTIC, ProtocolType.MESHCORE)
     var proto by remember { mutableStateOf(st.protocol ?: choices.firstOrNull { it in radios } ?: ProtocolType.MESHTASTIC) }
     val samples by remember(st.session) { app.db.dao().wardriveSession(st.session) }.collectAsState(emptyList())
+    var askShare by remember { mutableStateOf(false) }
+    // Prominent disclosure and consent before any location leaves the phone.
+    if (askShare) androidx.compose.material3.AlertDialog(onDismissRequest = { askShare = false },
+        title = { Text("Share your coverage?") },
+        text = { Text("While wardriving, Highbridge uses your precise location, also with the screen off, to record where your radio hears the mesh. " +
+            "If you share, it sends stpaulmesh.com your position rounded to about 10 m, the time and signal readings, for the public coverage map. " +
+            "No names, node IDs or device details are sent. You can change this any time on this screen.") },
+        confirmButton = { TextButton(onClick = {
+            askShare = false; app.prefs.setWardriveUpload(true); app.prefs.setWardriveAsked(true)
+            runCatching { wd.start(proto) }.onFailure { ctx.toast(it.message, long = true) }
+        }) { Text("Share and start") } },
+        dismissButton = { TextButton(onClick = {
+            askShare = false; app.prefs.setWardriveUpload(false); app.prefs.setWardriveAsked(true)
+            runCatching { wd.start(proto) }.onFailure { ctx.toast(it.message, long = true) }
+        }) { Text("Keep on my phone") } })
 
     // Keep the screen on while this screen is open and recording, like a dash-mounted map.
     DisposableEffect(st.running) {
@@ -111,6 +126,7 @@ fun WardriveScreen() {
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!st.running) Button(onClick = {
                         if (proto !in radios) ctx.toast("Connect your ${if (proto == ProtocolType.MESHCORE) "MeshCore" else "Meshtastic"} radio first", long = true)
+                        else if (!app.prefs.wardriveAsked.value) askShare = true
                         else runCatching { wd.start(proto) }.onFailure { ctx.toast(it.message, long = true) }
                     }) { Text("Start") }
                     else Button(onClick = { wd.stop() }) { Text("Stop") }

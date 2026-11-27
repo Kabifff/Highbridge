@@ -5,7 +5,7 @@
 <li>Channels and direct messages on Meshtastic and MeshCore radios, over Bluetooth or USB-C</li>
 <li>Bridge mode copies public channel messages from one mesh to the other, tagged with where they came from. Direct messages are never bridged, and loops are blocked</li>
 <li>Small photos and Codec2 voice notes sent in pieces, with automatic resend of missing pieces</li>
-<li>Delivery receipts, unread counts and notifications</li>
+<li>Replies, emoji reactions, quick replies, search, delivery receipts and notifications</li>
 </ul>
 
 <p><b>Radios and regions</b></p>
@@ -20,13 +20,15 @@
 <p><b>Field tools</b></p>
 <ul>
 <li>Offline-capable map of nodes, node list with signal and battery, compass to any node</li>
+<li>Wardriving: map where Meshtastic and MeshCore reach, shared to a live public coverage map</li>
 <li>Traceroute, topology graph, range test with a heatmap, and GPX track recording</li>
+<li>Shared map pins, satellite and topographic maps you can save for offline use</li>
 <li>One-tap check-in and SOS, geofence alerts, barometer forecast, Morse keyer, ATAK position bridge</li>
 <li>Power profiles that save battery, with an automatic switch at low battery</li>
 <li>Optional PIN lock and encrypted backups</li>
 </ul>
 
-<p>No accounts, no ads, no tracking. Messages travel radio to radio and never pass through a server.</p>
+<p>No accounts, no ads, no tracking. Messages travel radio to radio and never pass through a server. Wardriving coverage is shared only if you choose to.</p>
 
 <p>This edition covers Meshtastic and MeshCore. A full edition that adds Reticulum (Sideband, MeshChat, NomadNet) is on the project's GitHub releases page.</p>
 

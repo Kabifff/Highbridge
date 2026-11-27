@@ -186,6 +186,18 @@ fun MeshtasticSettingsScreen() {
         } }
 
         item {
+            Section("Licensed (ham) mode") {
+                var call by remember { mutableStateOf("") }
+                var power by remember { mutableStateOf("30") }
+                Text("For licensed amateur operators. Uses your call sign as the node name and turns off encryption, " +
+                    "as amateur rules don't allow encrypted traffic. Your messages can then be read by anyone.", fontSize = 12.sp)
+                OutlinedTextField(call, { call = it.uppercase().take(8) }, Modifier.fillMaxWidth(), label = { Text("Call sign") }, singleLine = true)
+                NumField("Transmit power (dBm, your radio's limit applies)", power) { power = it }
+                Button(enabled = call.length >= 3, onClick = { confirm = "Switch to licensed mode as $call? Encryption is turned off." to { mt.setHamMode(call, power.toIntOrNull() ?: 30) } }) { Text("Turn on licensed mode") }
+            }
+        }
+
+        item {
             Section("Radio actions") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { confirm = "Restart the radio?" to { mt.reboot() } }) { Text("Restart") }

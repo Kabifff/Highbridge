@@ -95,7 +95,7 @@ class Wardriver(
             while (isActive) {
                 delay(5_000)
                 tick(protocol, session)
-                if (prefs.wardriveUpload.value && SystemClock.elapsedRealtime() - lastUpload > 120_000) {
+                if (prefs.wardriveAsked.value && prefs.wardriveUpload.value && SystemClock.elapsedRealtime() - lastUpload > 120_000) {
                     lastUpload = SystemClock.elapsedRealtime(); upload(protocol)
                 }
             }
@@ -108,7 +108,7 @@ class Wardriver(
         runCatching { lm?.removeUpdates(listener) }
         MeshBridgeService.setWardriving(ctx, false)
         _state.value = s.copy(running = false, note = "Stopped")
-        if (s.protocol != null && prefs.wardriveUpload.value) scope.launch { upload(s.protocol) }
+        if (s.protocol != null && prefs.wardriveAsked.value && prefs.wardriveUpload.value) scope.launch { upload(s.protocol) }
     }
 
     private fun onFix(l: Location) {
