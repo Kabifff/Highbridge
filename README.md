@@ -4,7 +4,7 @@
 
 It's named for Saint Paul's High Bridge, which joins the West 7th neighborhood to the West Side bluffs. It's made in Saint Paul and works with any LoRa band in the world.
 
-> Status: early. The code builds and its logic tests pass, but it has not been tested on real radios yet. Please report what works and what doesn't.
+> Status: early. The code builds and its logic tests pass, but it has not been extensively tested on real radios yet. Please report what works and what doesn't.
 
 ## Features
 
