@@ -11,6 +11,8 @@ import java.util.Locale
 object I18n {
     fun lang(): String = when (Locale.getDefault().language) { "es" -> "es"; "nb", "no", "nn" -> "nb"; else -> "en" }
     val es: Map<String, String> = hashMapOf(
+        "Grid" to "Cuadrícula",
+        "Finding your grid square…" to "Buscando tu cuadrícula…",
         "Vibrate on taps" to "Vibrar al tocar",
         "Off" to "Apagado",
         "Light" to "Suave",
@@ -502,6 +504,8 @@ object I18n {
         "Choose English, Spanish or Norwegian for Highbridge" to "Elige inglés, español o noruego para Highbridge",
     )
     val nb: Map<String, String> = hashMapOf(
+        "Grid" to "Rute",
+        "Finding your grid square…" to "Finner ruten din…",
         "Vibrate on taps" to "Vibrer ved trykk",
         "Off" to "Av",
         "Light" to "Lett",

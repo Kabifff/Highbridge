@@ -1,0 +1,2 @@
+- The Chats header now shows your grid square (for example EN34kw) from your phone's location
+- Location works with approximate location permission too

@@ -27,8 +27,8 @@ android {
         applicationId = "com.stpaulmesh.highbridge"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.5.2"
+        versionCode = 10
+        versionName = "0.5.3"
         ndk { abiFilters += listOf("arm64-v8a") }
         // Google Play's payments policy doesn't allow tip links for groups that aren't tax-exempt,
         // so the Play bundle is built with -Phb.play=true and leaves them out. Every other build shows them.

@@ -128,7 +128,11 @@ fun ChatsScreen(openDrawer: () -> Unit) {
     var newChat by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
-        HbHeader("Highbridge", "West 7th · ${radios.size} radio${if (radios.size == 1) "" else "s"} connected", skyline = true, actions = {
+        // Your Maidenhead grid square (e.g. EN34kw), from the phone's location.
+        val here by app.radios.myLocation.collectAsState()
+        val grid = here?.let { org.highbridge.app.pro.Geo.maidenhead(it.first, it.second) }
+        HbHeader("Highbridge", (grid?.let { tr("Grid") + " $it" } ?: tr("Finding your grid square…")) +
+            " · ${radios.size} radio${if (radios.size == 1) "" else "s"} connected", skyline = true, actions = {
             IconButton(onClick = { nav.navigate("search") }) { Icon(Icons.Filled.Search, "Search messages") }
         })
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

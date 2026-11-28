@@ -67,6 +67,7 @@ class StoreScreenshots {
         app.prefs.setOnboarded(true)
         app.prefs.setRegion(MeshtasticRegion.US)
         app.prefs.setDisplayName("Fort Road")
+        app.radios.myLocation.value = 44.9330 to -93.1150   // by the High Bridge, for the header's grid square
         val dao = app.db.dao()
         val now = System.currentTimeMillis()
         val min = 60_000L

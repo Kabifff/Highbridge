@@ -149,7 +149,7 @@ class AprsRadio(
                     val out = s.getOutputStream()
                     val call = c.callsign.uppercase()
                     val pass = if (c.callsign.isNotBlank()) AprsFormat.passcode(call) else -1
-                    out.write("user $call pass $pass vers Highbridge 0.5.2 filter ${filterString()}\r\n".toByteArray()); out.flush()
+                    out.write("user $call pass $pass vers Highbridge 0.5.3 filter ${filterString()}\r\n".toByteArray()); out.flush()
                     isConnected.value = true; updateState(); backoff = 5_000L
                     val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
                     while (isActive) {

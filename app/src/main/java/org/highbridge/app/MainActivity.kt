@@ -129,7 +129,8 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     val perms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
-        if (r[Manifest.permission.ACCESS_FINE_LOCATION] == true) app.location.start()
+        // Approximate location is enough for the grid square, so start with either permission.
+        if (r[Manifest.permission.ACCESS_FINE_LOCATION] == true || r[Manifest.permission.ACCESS_COARSE_LOCATION] == true) app.location.start()
     }
     LaunchedEffect(Unit) {
         val list = buildList {
