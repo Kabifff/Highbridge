@@ -91,7 +91,9 @@ class MainActivity : ComponentActivity() {
         val app = application as HighbridgeApp
         setContent {
             val dark by app.prefs.darkMode.collectAsState()
-            StPaulMeshTheme(darkTheme = when (dark) { "DARK" -> true; "LIGHT" -> false; else -> isSystemInDarkTheme() }) {
+            val accent by app.prefs.accent.collectAsState()
+            StPaulMeshTheme(darkTheme = when (dark) { "DARK" -> true; "LIGHT" -> false; else -> isSystemInDarkTheme() },
+                accent = runCatching { org.highbridge.app.ui.theme.Accent.valueOf(accent) }.getOrDefault(org.highbridge.app.ui.theme.Accent.COMO)) {
                 var unlocked by remember { mutableStateOf(app.prefs.pinRecord.value == null) }
                 if (!unlocked) LockScreen(onUnlocked = { unlocked = true })
                 else HighbridgeRoot(pendingRoute.value) { pendingRoute.value = null }
@@ -223,6 +225,11 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                         composable("ar") { org.highbridge.app.ui.screens.ArScreen() }
                         composable("aprs") { org.highbridge.app.ui.screens.AprsScreen() }
                         composable("about") { org.highbridge.app.ui.screens.AboutUsScreen() }
+                        composable("ringtones") { org.highbridge.app.ui.screens.RingtonesScreen() }
+                        composable("rangefinder") { org.highbridge.app.ui.screens.RangefinderScreen() }
+                        composable("los") { org.highbridge.app.ui.screens.LineOfSightScreen("") }
+                        composable("los/{k}") { b -> org.highbridge.app.ui.screens.LineOfSightScreen(Uri.decode(b.arguments?.getString("k") ?: "")) }
+                        composable("automations") { org.highbridge.app.ui.screens.AutomationsScreen() }
                         composable("help") { org.highbridge.app.ui.screens.HowToHelpScreen() }
                         composable("callsign") { org.highbridge.app.ui.screens.CallsignScreen() }
                         composable("callsign/{c}") { b -> org.highbridge.app.ui.screens.CallsignScreen(Uri.decode(b.arguments?.getString("c") ?: "")) }

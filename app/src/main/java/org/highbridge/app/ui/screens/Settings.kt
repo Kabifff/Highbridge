@@ -2,6 +2,12 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import org.highbridge.app.ui.tr
 
 import org.highbridge.app.ui.toast
@@ -162,6 +168,20 @@ fun SettingsScreen() {
             HbCard {
                 Text(tr("Appearance"), fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("SYSTEM" to "Match phone", "LIGHT" to "Light", "DARK" to "Fort Road at night").forEach { (k, l) -> FilterChip(dark == k, { p.setDarkMode(k) }, { Text(l) }) } }
+                // Accent colour: twelve swatches, the selected one ringed.
+                val accent by p.accent.collectAsState()
+                Text(tr("Accent color") + ": " + tr(runCatching { org.highbridge.app.ui.theme.Accent.valueOf(accent) }.getOrDefault(org.highbridge.app.ui.theme.Accent.COMO).label), fontSize = 13.sp)
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    org.highbridge.app.ui.theme.Accent.entries.forEach { a ->
+                        val sel = accent == a.name
+                        androidx.compose.foundation.layout.Box(Modifier.size(40.dp)
+                            .then(if (sel) Modifier.border(3.dp, MaterialTheme.colorScheme.onBackground, androidx.compose.foundation.shape.CircleShape) else Modifier)
+                            .padding(4.dp).background(a.light, androidx.compose.foundation.shape.CircleShape)
+                            .clickable { p.setAccent(a.name) }
+                            .semantics { contentDescription = tr(a.label); selected = sel })
+                    }
+                }
             }
             if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) HbCard {
                 Text("Reticulum", fontWeight = FontWeight.Bold); Text(tr("Changes here take effect the next time the app starts."), fontSize = 12.sp)

@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.highbridge.app.MainActivity
 import org.highbridge.app.R
 import org.highbridge.app.data.ChannelEntity
@@ -43,6 +44,7 @@ import org.highbridge.app.data.WaypointEntity
 import org.highbridge.app.pro.AirtimeMonitor
 import org.highbridge.app.pro.AtakCotBridge
 import org.highbridge.app.pro.GeofenceRules
+import org.highbridge.app.pro.Automations
 import org.highbridge.app.pro.Geo
 import org.highbridge.app.rns.ReticulumSupport
 import org.highbridge.core.media.LoRaImageCompressor
@@ -123,6 +125,7 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         scope.launch { media.completed.collect { onMediaComplete(it) } }
         scope.launch { prefs.region.collect { airtime.region = it } }
         scope.launch { stationIdLoop() }
+        scope.launch { automationClock() }
         // Keep the home-screen widget current.
         scope.launch {
             kotlinx.coroutines.flow.combine(_radios, dao.unreadCount()) { r, u -> r.keys.map { it.shortTag } to u }
@@ -374,6 +377,8 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
             fromName = p.fromShortName, text = text, timeMs = p.timestampMs, outgoing = false, status = 4, viaBridge = bridged,
             read = tp.emoji || (conv == openConversation && foreground), replyTo = tp.replyTo, emoji = tp.emoji))
         if (!tp.emoji && !(foreground && conv == openConversation)) notifyMessage(conv, p.fromShortName, text)
+        if (!tp.emoji) fireAutomations(Automations.matchMessage(automationRules(), conv, text, System.currentTimeMillis()),
+            Automations.Event(p.fromShortName, text, p.protocol.shortTag, conv))
     }
 
     private suspend fun onEvent(e: RadioEvent) {
@@ -428,6 +433,13 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
     private suspend fun saveNode(n: MeshNode) {
         val key = "${n.protocol.name}:${n.id}"
         val old = dao.node(key)
+        // "Heard again after a quiet spell" automations.
+        if (old != null && n.lastHeardMs > old.lastHeardMs) {
+            val away = (n.lastHeardMs - old.lastHeardMs) / 60_000
+            val due = automationRules().filter { r -> r.enabled && r.trigger == Automations.Trigger.NODE_BACK &&
+                (r.triggerScope.isBlank() || r.triggerScope == key) && away >= (r.triggerValue.toLongOrNull() ?: 60) && System.currentTimeMillis() - r.lastRunMs >= 60_000 }
+            if (due.isNotEmpty()) fireAutomations(due, Automations.Event(n.longName.ifBlank { n.shortName }, "back after $away min", n.protocol.shortTag, nodeKey = key))
+        }
         dao.upsertNode(NodeEntity(key, n.protocol.name, n.id, n.shortName, n.longName, n.latitude ?: old?.lat, n.longitude ?: old?.lon,
             n.batteryPct ?: old?.battery, n.voltage ?: old?.voltage, n.snr ?: old?.snr, n.rssi ?: old?.rssi,
             n.hopsAway.takeIf { it >= 0 } ?: old?.hops, maxOf(n.lastHeardMs, old?.lastHeardMs ?: 0), old?.favorite ?: false,
@@ -442,8 +454,12 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
             val inside = GeofenceRules.isInside(kind, Geo.parsePoints(g.points), g.radiusM, lat, lon)
             val k = "${g.rowId}|$nodeKey"
             val was = fenceState.put(k, inside)
-            if (was != null && was != inside && (inside || g.alertOnExit))
-                notify("Geofence: ${g.name}", "$name ${if (inside) "entered" else if (kind == GeofenceRules.Kind.TRAIL) "drifted off" else "left"} ${g.name}", "fence$k".hashCode())
+            if (was != null && was != inside && (inside || g.alertOnExit)) {
+                val what = "$name ${if (inside) "entered" else if (kind == GeofenceRules.Kind.TRAIL) "drifted off" else "left"} ${g.name}"
+                notify("Geofence: ${g.name}", what, "fence$k".hashCode())
+                fireAutomations(automationRules().filter { it.enabled && it.trigger == Automations.Trigger.GEOFENCE && System.currentTimeMillis() - it.lastRunMs >= 60_000 },
+                    Automations.Event(name, what, nodeKey.substringBefore(':'), nodeKey = nodeKey))
+            }
         }
     }
 
@@ -506,6 +522,60 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         dao.insertMessage(MessageEntity(packetId = "media-${file.name}", protocol = m.protocol.name, conversation = conv, fromId = m.senderId,
             fromName = m.senderName, text = label, timeMs = System.currentTimeMillis(), outgoing = false, mediaType = m.mediaType.name, mediaPath = file.absolutePath))
         notifyMessage(conv, m.senderName, label)
+    }
+
+    // ------------------------------------------------------------------ automations
+
+    fun automationRules() = Automations.load(prefs.automations.value)
+    /** The last results, newest first, for the Automations screen. */
+    val automationLog = MutableStateFlow<List<String>>(emptyList())
+    private val autoLock = kotlinx.coroutines.sync.Mutex()
+    private var lastBattery: Int? = null
+
+    private fun fireAutomations(rules: List<Automations.Rule>, e: Automations.Event) {
+        if (rules.isEmpty()) return
+        scope.launch { rules.forEach { runCatching { runAutomation(it, e) } } }
+    }
+
+    /** Runs one rule now (also used by the Test button) and records when it ran. */
+    suspend fun runAutomation(r: Automations.Rule, e: Automations.Event = Automations.Event()) {
+        autoLock.withLock {
+            prefs.setAutomations(Automations.save(automationRules().map { if (it.id == r.id) it.copy(lastRunMs = System.currentTimeMillis()) else it }))
+        }
+        val battery = org.highbridge.app.HighbridgeApp.instance.power.batteryPct.value
+        val grid = myLocation.value?.let { Geo.maidenhead(it.first, it.second) }
+        val text = Automations.fill(r.text, e, battery, grid)
+        val result: Result<String> = runCatching {
+            when (r.action) {
+                Automations.Action.SEND -> { require(r.target.isNotBlank() && text.isNotBlank()) { "Choose a chat and write the message" }
+                    sendText(r.target, text).getOrThrow(); "sent to ${conversationTitle(r.target)}" }
+                Automations.Action.POSITION -> { val p = myLocation.value ?: error("No location yet")
+                    _radios.value.values.filter { it.protocol != ProtocolType.APRS || prefs.aprsBeacon.value }.forEach { it.sendPosition(p.first, p.second, myAltitudeM.value?.toInt()) }
+                    "position sent" }
+                Automations.Action.CHECKIN -> "checked in on " + broadcastStatus(false).joinToString().ifBlank { error("No radio connected") }
+                Automations.Action.WEBHOOK -> withContext(Dispatchers.IO) { Automations.postWebhook(r.target.trim(), r, e.copy(text = e.text.ifBlank { text }), ifttt = false).getOrThrow() }.let { "web address answered $it" }
+                Automations.Action.IFTTT -> withContext(Dispatchers.IO) { Automations.postWebhook(Automations.iftttUrl(r.target), r, e.copy(text = e.text.ifBlank { text }), ifttt = true).getOrThrow() }.let { "IFTTT answered $it" }
+                Automations.Action.NOTIFY -> { notify(r.name, text.ifBlank { e.text }, "auto${r.id}".hashCode()); "notification shown" }
+            }
+        }
+        val line = "%tR %s: %s".format(java.util.Date(), r.name, result.fold({ it }, { "failed (${it.message})" }))
+        automationLog.value = (listOf(line) + automationLog.value).take(30)
+    }
+
+    private fun conversationTitle(conv: String) = conv.substringAfterLast(':')
+
+    /** Checks scheduled and battery rules twice a minute. */
+    private suspend fun automationClock() {
+        while (true) {
+            delay(20_000)
+            val rules = automationRules()
+            if (rules.none { it.enabled }) continue
+            fireAutomations(Automations.dueOnSchedule(rules, java.time.LocalDateTime.now(), System.currentTimeMillis()), Automations.Event())
+            val b = org.highbridge.app.HighbridgeApp.instance.power.batteryPct.value
+            val prev = lastBattery; lastBattery = b
+            if (b != null && prev != null) fireAutomations(rules.filter { r -> r.enabled && r.trigger == Automations.Trigger.BATTERY &&
+                (r.triggerValue.toIntOrNull() ?: 20).let { lim -> b <= lim && prev > lim } }, Automations.Event(text = "battery $b%"))
+        }
     }
 
     // ------------------------------------------------------------------ Join Saint Paul Mesh
@@ -811,6 +881,16 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         // Messaging-style notification with Reply and Mark as read, which phones, watches and Android Auto all understand.
         val lines = recentByConv.getOrPut(conv) { mutableListOf() }.apply { add(from to text); while (size > 6) removeAt(0) }
         MessageNotifier.show(ctx, conv, lines.toList())
+        playMessageTune()
+    }
+
+    /** The phone's message tune, if one is chosen, only when the ringer is on (not silent or vibrate). */
+    private fun playMessageTune() {
+        val tune = prefs.messageTune.value
+        if (tune.isBlank()) return
+        val am = ctx.getSystemService(android.media.AudioManager::class.java)
+        if (am.ringerMode != android.media.AudioManager.RINGER_MODE_NORMAL) return
+        scope.launch { org.highbridge.app.pro.Rtttl.play(tune, android.media.AudioAttributes.USAGE_NOTIFICATION) }
     }
 
     /** Called when the person reads or answers a conversation. */

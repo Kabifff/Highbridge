@@ -36,8 +36,8 @@ jobs:
           HB_KEY_PASSWORD: ${{ secrets.HB_KEY_PASSWORD }}
         run: |
           ./gradlew --no-daemon :app:testLiteDebugUnitTest assembleLiteRelease assembleFullRelease
-          # The Play bundle leaves out tip links (Google Play payments policy); built separately with its own flag.
-          ./gradlew --no-daemon -Phb.play=true bundleLiteRelease
+          # The Play bundle leaves out tip links (Google Play payments policy) and adds the watch link.
+          ./gradlew --no-daemon -Phb.play=true bundleLiteRelease :wear:bundleRelease
       - name: Collect
         run: |
           mkdir out
@@ -45,6 +45,7 @@ jobs:
           cp app/build/outputs/apk/full/release/*.apk "out/Highbridge-$v-full.apk"
           cp app/build/outputs/apk/lite/release/*.apk "out/Highbridge-$v-lite.apk"
           cp app/build/outputs/bundle/liteRelease/*.aab "out/Highbridge-$v-play.aab"
+          cp wear/build/outputs/bundle/release/*.aab "out/Highbridge-$v-wear.aab"
           rm -f "$RUNNER_TEMP/release.jks"
       - uses: actions/upload-artifact@v4
         with: { name: highbridge-release, path: out/ }

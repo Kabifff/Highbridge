@@ -1,0 +1,7 @@
+Everything other mesh apps charge for, free:
+- Automations: scheduled broadcasts, keyword replies, node-back and low-battery alerts, webhooks and IFTTT
+- Line of sight over real terrain to any node, with the Fresnel zone
+- Camera rangefinder for distance and height
+- Ringtones: play, use for messages, or send to your radio's buzzer
+- 12 accent colors
+- Wear OS watch app: chats, quick and voice replies, check-in and SOS (Google Play edition)

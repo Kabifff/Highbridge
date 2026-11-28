@@ -33,14 +33,17 @@
 <li>Traceroute, topology graph, range test with a heatmap, and GPX track recording</li>
 <li>Shared map pins, traceroutes on the map, and nine map views including satellite, hybrid and terrain</li>
 <li>AR camera view of nodes, pins and landmarks, with a pin drop straight ahead</li>
-<li>Coverage prediction from antenna height, power and gain</li>
+<li>Coverage prediction from antenna height, power and gain, and a line-of-sight check over real terrain to any node</li>
+<li>Camera rangefinder for distance and height</li>
 <li>One-tap check-in and SOS, geofence alerts, barometer forecast, Morse keyer, ATAK position bridge</li>
 <li>Power profiles that save battery, with an automatic switch at low battery</li>
+<li>Automations: scheduled broadcasts, keyword replies, alerts when a node comes back, webhooks and IFTTT</li>
+<li>Ringtones for your radio's buzzer, 12 accent colors, optional haptics, and a Wear OS watch app (Google Play edition)</li>
 <li>Optional PIN lock and encrypted backups</li>
 <li>Home-screen widget; English, Spanish and Norwegian</li>
 </ul>
 
-<p>No accounts, no ads, no tracking. Messages travel radio to radio and never pass through a server, unless you turn on MQTT or APRS over the internet. Wardriving coverage is shared only if you choose to.</p>
+<p>Everything is free: no paid tiers, no add-ons to unlock. No accounts, no ads, no tracking. Messages travel radio to radio and never pass through a server, unless you turn on MQTT or APRS over the internet. Wardriving coverage is shared only if you choose to.</p>
 
 <p>This edition covers Meshtastic and MeshCore. A full edition that adds Reticulum (Sideband, MeshChat, NomadNet) is on the project's GitHub releases page.</p>
 

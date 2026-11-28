@@ -142,7 +142,12 @@ interface MeshDao {
               (SELECT COUNT(*) FROM messages u WHERE u.conversation = m.conversation AND u.read = 0) AS unread
               FROM messages m WHERE m.timeMs = (SELECT MAX(timeMs) FROM messages x WHERE x.conversation = m.conversation)
               GROUP BY m.conversation ORDER BY m.timeMs DESC""") fun conversations(): Flow<List<ConversationRow>>
+    @Query("""SELECT m.conversation AS conversation, m.protocol AS protocol, m.text AS lastText, m.fromName AS lastFrom, m.timeMs AS lastTime,
+              (SELECT COUNT(*) FROM messages u WHERE u.conversation = m.conversation AND u.read = 0) AS unread
+              FROM messages m WHERE m.timeMs = (SELECT MAX(timeMs) FROM messages x WHERE x.conversation = m.conversation)
+              GROUP BY m.conversation ORDER BY m.timeMs DESC LIMIT :n""") suspend fun recentConversations(n: Int): List<ConversationRow>
     @Query("SELECT * FROM messages ORDER BY timeMs DESC LIMIT :n") suspend fun recentMessages(n: Int): List<MessageEntity>
+    @Query("SELECT * FROM messages WHERE conversation = :c ORDER BY timeMs DESC LIMIT :n") suspend fun lastMessages(c: String, n: Int): List<MessageEntity>
 
     @Upsert suspend fun upsertNode(n: NodeEntity)
     @Query("SELECT * FROM nodes WHERE `key` = :key") suspend fun node(key: String): NodeEntity?

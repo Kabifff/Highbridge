@@ -310,6 +310,49 @@ fun everything() = runBlocking {
     val west7 = org.highbridge.core.protocol.StPaulQuickJoin.meshCoreChannel()
     check("West Seventh MeshCore secret is 16 bytes", west7.name == "West Seventh" && west7.rawKeyBytes().size == 16 && west7.rawKeyBytes()[0] == 0x56.toByte())
 
+    // 0.6.0: ringtones, rangefinder, line of sight, automations
+    val beep = Rtttl.parse("Beep:d=8,o=6,b=120:a,p,a")
+    check("RTTTL parses notes, rests and tempo", beep.isSuccess && beep.getOrThrow().notes.size == 3 &&
+        kotlin.math.abs(beep.getOrThrow().notes[0].freqHz - 1760.0) < 0.5 && beep.getOrThrow().notes[1].freqHz == 0.0 &&
+        beep.getOrThrow().notes[0].ms == 250)
+    val dotted = Rtttl.parse("x:d=4,o=5,b=60:c.,8c#6").getOrThrow()
+    check("RTTTL dotted notes and sharps", dotted.notes[0].ms == 1500 && kotlin.math.abs(dotted.notes[1].freqHz - 1108.73) < 0.5)
+    check("RTTTL rejects broken tunes", Rtttl.parse("no colons").isFailure && Rtttl.parse("x:b=60:h4").isFailure)
+    check("Every built-in tune parses and fits a radio", Rtttl.LIBRARY.all { Rtttl.parse(it.second).isSuccess && it.second.length <= 230 })
+    check("Rangefinder: 1.6 m eyes looking 45° down is 1.6 m away", kotlin.math.abs((Rangefinder.fromEyeHeight(1.6, -45.0) ?: 0.0) - 1.6) < 0.01)
+    check("Rangefinder refuses aiming up", Rangefinder.fromEyeHeight(1.6, 5.0) == null)
+    val rfD = Rangefinder.fromKnownHeight(30.0, -2.0, 15.0) ?: 0.0
+    check("Rangefinder known height and height-at agree", rfD > 0 && kotlin.math.abs(Rangefinder.heightAt(rfD, -2.0, 15.0) - 30.0) < 0.01)
+    val flat = LineOfSight.compute(List(51) { 250.0 }, 5_000.0, 30.0, 30.0, 915.0)
+    val low = LineOfSight.compute(List(51) { 250.0 }, 5_000.0, 10.0, 10.0, 915.0)
+    check("Line of sight: flat 5 km is clear; 30 m masts clear the Fresnel zone, 10 m ones only partly", flat.clear && flat.fresnelClearance > 0.6 && low.clear && low.fresnelClearance in 0.3..0.6)
+    val hill = LineOfSight.compute(List(51) { i -> if (i == 25) 300.0 else 250.0 }, 5_000.0, 10.0, 10.0, 915.0)
+    check("Line of sight: a 50 m hill in the middle blocks it", !hill.clear && kotlin.math.abs(hill.worstAtM - 2_500.0) < 1 && hill.worstBlockM > 30)
+    val far = LineOfSight.compute(List(101) { 250.0 }, 60_000.0, 2.0, 2.0, 915.0)
+    check("Line of sight: the earth's curve blocks 60 km at 2 m", !far.clear)
+    val kw = Automations.Rule(id = 1, name = "net", trigger = Automations.Trigger.KEYWORD, triggerValue = "net", action = Automations.Action.NOTIFY)
+    check("Automation keyword is a whole word, any case", Automations.matchMessage(listOf(kw), "MT:ch:0", "Is the NET on tonight?", 100_000).size == 1 &&
+        Automations.matchMessage(listOf(kw), "MT:ch:0", "internet down", 100_000).isEmpty())
+    check("Automation keyword waits a minute between runs", Automations.matchMessage(listOf(kw.copy(lastRunMs = 90_000)), "MT:ch:0", "net", 100_000).isEmpty())
+    check("Automation keyword respects its chat", Automations.matchMessage(listOf(kw.copy(triggerScope = "MC:ch:1")), "MT:ch:0", "net", 100_000).isEmpty())
+    val daily = Automations.Rule(id = 2, name = "d", trigger = Automations.Trigger.DAILY, triggerValue = "20:00", triggerScope = "1111100", action = Automations.Action.CHECKIN)
+    val mon8 = java.time.LocalDateTime.of(2026, 11, 30, 20, 0)   // a Monday
+    val sat8 = java.time.LocalDateTime.of(2026, 11, 28, 20, 0)
+    check("Daily automation runs at its time on chosen days", Automations.dueOnSchedule(listOf(daily), mon8, 10_000_000).size == 1 &&
+        Automations.dueOnSchedule(listOf(daily), sat8, 10_000_000).isEmpty() &&
+        Automations.dueOnSchedule(listOf(daily), mon8.plusMinutes(1), 10_000_000).isEmpty())
+    val every = Automations.Rule(id = 3, name = "e", trigger = Automations.Trigger.EVERY, triggerValue = "2", action = Automations.Action.POSITION, lastRunMs = 0)
+    check("Repeating automation runs no more than every 10 minutes", Automations.dueOnSchedule(listOf(every), mon8, 9 * 60_000L).isEmpty() &&
+        Automations.dueOnSchedule(listOf(every), mon8, 10 * 60_000L).size == 1)
+    check("Automation placeholders fill in", Automations.fill("{from} said {text} on {network} at {time}, {battery} {grid}",
+        Automations.Event("Bob", "hi", "Meshtastic"), 42, "EN34kw", mon8) == "Bob said hi on Meshtastic at 20:00, 42% EN34kw")
+    check("IFTTT address", Automations.iftttUrl("abc123|mesh msg") == "https://maker.ifttt.com/trigger/mesh+msg/with/key/abc123" &&
+        runCatching { Automations.iftttUrl("abc123") }.isFailure)
+    val saved = Automations.save(listOf(kw, daily))
+    check("Automations save and load", Automations.load(saved) == listOf(kw, daily) && Automations.load("garbage").isEmpty())
+    check("Accent themes: twelve, all distinct", org.highbridge.app.ui.theme.Accent.entries.size == 12 &&
+        org.highbridge.app.ui.theme.Accent.entries.map { it.light }.toSet().size == 12)
+
     coroutineContext.cancelChildren()
     println(if (fails == 0) "ALL PASSED" else "$fails FAILED")
     org.junit.Assert.assertEquals(0, fails)

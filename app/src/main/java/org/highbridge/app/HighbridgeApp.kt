@@ -26,6 +26,8 @@ class HighbridgeApp : Application() {
         radios = RadioManager(this, db.dao(), prefs)
         location = LocationScheduler(this, prefs, radios)
         power = PowerProfileManager(this, prefs).also { it.start() }
+        // Keeps a paired Wear OS watch up to date (Google Play build only; a no-op otherwise).
+        org.highbridge.app.wear.WearLink.start(this)
         Configuration.getInstance().apply {
             userAgentValue = "Highbridge/${BuildConfig.VERSION_NAME} (Android)"
             osmdroidBasePath = File(filesDir, "osmdroid")

@@ -20,3 +20,5 @@ include(
 // The Python/Reticulum module is only for the full edition. Builders of the store edition
 // (F-Droid) pass -Phb.liteOnly=true so no Python tooling is configured at all.
 if (providers.gradleProperty("hb.liteOnly").orNull != "true") include(":rns-python")
+// Wear OS companion. It needs Google Play services, so F-Droid's recipe deletes the folder.
+if (file("wear").exists() && providers.gradleProperty("hb.liteOnly").orNull != "true") include(":wear")

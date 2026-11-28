@@ -154,6 +154,7 @@ fun NodeDetailScreen(key: String) {
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { nav.navigate("chat/${Uri.encode("${n.protocol}:dm:${n.id}")}") }) { Text(tr("Message")) }
                 if (proto != ProtocolType.APRS) OutlinedButton(onClick = { scope.launch { val r = app.radios.radio(proto)?.requestTraceroute(n.id); ctx.toast(r?.exceptionOrNull()?.message ?: "Traceroute sent") } }) { Text("Traceroute") }
+                if (n.lat != null && n.lon != null) OutlinedButton(onClick = { nav.navigate("los/${Uri.encode(n.key)}") }) { Text(tr("Line of sight")) }
                 if (proto == ProtocolType.MESHTASTIC) OutlinedButton(onClick = { nav.navigate("mtremote/${Uri.encode(n.id)}") }) { Text(tr("Admin")) }
                 if (proto == ProtocolType.MESHCORE) OutlinedButton(onClick = {
                     scope.launch { ctx.toast(app.radios.meshcore?.requestTelemetry(n.id)?.exceptionOrNull()?.message ?: "Asked for telemetry; the answer shows below when it arrives") }

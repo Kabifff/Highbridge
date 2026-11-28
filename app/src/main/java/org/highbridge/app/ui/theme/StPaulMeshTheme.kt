@@ -58,6 +58,7 @@ object StPaulMeshPalette {
 private val Light = lightColorScheme(
     primary = StPaulMeshPalette.Green, onPrimary = StPaulMeshPalette.Cream,
     primaryContainer = Color(0xFFDCEBD5), onPrimaryContainer = StPaulMeshPalette.Ink,
+    secondaryContainer = Color(0xFFDCEBD5), onSecondaryContainer = StPaulMeshPalette.Ink,
     secondary = StPaulMeshPalette.Bronze, onSecondary = Color.White,
     tertiary = StPaulMeshPalette.Gold, onTertiary = StPaulMeshPalette.Ink,
     background = StPaulMeshPalette.Cream, onBackground = StPaulMeshPalette.Ink,
@@ -69,6 +70,7 @@ private val Light = lightColorScheme(
 private val Dark = darkColorScheme(
     primary = StPaulMeshPalette.NightGreen, onPrimary = StPaulMeshPalette.NightBg,
     primaryContainer = Color(0xFF24402A), onPrimaryContainer = StPaulMeshPalette.NightFg,
+    secondaryContainer = Color(0xFF24402A), onSecondaryContainer = StPaulMeshPalette.NightFg,
     secondary = StPaulMeshPalette.NightAmber, onSecondary = StPaulMeshPalette.NightBg,
     tertiary = StPaulMeshPalette.Gold, onTertiary = StPaulMeshPalette.NightBg,
     background = StPaulMeshPalette.NightBg, onBackground = StPaulMeshPalette.NightFg,
@@ -90,9 +92,31 @@ private val HbTypography = androidx.compose.material3.Typography().let { t ->
 }
 
 @Composable
-fun StPaulMeshTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    // Dynamic (wallpaper) color is deliberately off so the app always looks like stpaulmesh.com.
-    MaterialTheme(colorScheme = if (darkTheme) Dark else Light, typography = HbTypography, content = content)
+fun StPaulMeshTheme(darkTheme: Boolean = isSystemInDarkTheme(), accent: Accent = Accent.COMO, content: @Composable () -> Unit) {
+    // Dynamic (wallpaper) color is deliberately off so the app always looks like stpaulmesh.com; the accent is the user's pick.
+    val base = if (darkTheme) Dark else Light
+    val scheme = if (accent == Accent.COMO) base else base.copy(
+        primary = if (darkTheme) accent.dark else accent.light,
+        primaryContainer = if (darkTheme) accent.darkContainer else accent.lightContainer,
+        secondaryContainer = if (darkTheme) accent.darkContainer else accent.lightContainer,
+    )
+    MaterialTheme(colorScheme = scheme, typography = HbTypography, content = content)
+}
+
+/** Twelve accent colours, named for Saint Paul. Como green is the stpaulmesh.com default. */
+enum class Accent(val label: String, val light: Color, val lightContainer: Color, val dark: Color, val darkContainer: Color) {
+    COMO("Como green", Color(0xFF2D6A2E), Color(0xFFDCEBD5), Color(0xFF86C986), Color(0xFF24402A)),
+    MISSISSIPPI("Mississippi blue", Color(0xFF2B6F8C), Color(0xFFD5E8F0), Color(0xFF7CC3E0), Color(0xFF173A49)),
+    CATHEDRAL("Cathedral copper", Color(0xFF8A5A2B), Color(0xFFF1E1CF), Color(0xFFE0B07E), Color(0xFF43301B)),
+    SUMMIT("Summit slate", Color(0xFF4A5A6A), Color(0xFFDDE3EA), Color(0xFFAEC0D2), Color(0xFF28323C)),
+    HARRIET("Harriet Island teal", Color(0xFF16736B), Color(0xFFD1ECE8), Color(0xFF74CFC4), Color(0xFF113D39)),
+    LILAC("Lilac Way purple", Color(0xFF6B4A92), Color(0xFFE7DDF3), Color(0xFFC5A9E6), Color(0xFF35284A)),
+    WINTER("Winter Carnival red", Color(0xFFA32F2F), Color(0xFFF5D9D6), Color(0xFFF09A92), Color(0xFF4C1E1C)),
+    FORT_SNELLING("Fort Snelling sandstone", Color(0xFF8C6D1F), Color(0xFFF2E6C4), Color(0xFFE2C46E), Color(0xFF3F3413)),
+    PHALEN("Phalen lake blue", Color(0xFF1F5FA8), Color(0xFFD6E3F5), Color(0xFF8DB7EE), Color(0xFF16304F)),
+    MEARS("Mears Park magenta", Color(0xFF9B2F6A), Color(0xFFF4D7E6), Color(0xFFEC97C3), Color(0xFF481C33)),
+    LANDMARK("Landmark Center brick", Color(0xFF8E3B2B), Color(0xFFF1D8D1), Color(0xFFE39C8C), Color(0xFF45211A)),
+    IRVINE("Irvine Park olive", Color(0xFF5C6B1E), Color(0xFFE6EBCB), Color(0xFFC1D178), Color(0xFF2E3512)),
 }
 
 /** Light-theme protocol color by stored protocol name ("MESHTASTIC", …); for maps and canvases. */

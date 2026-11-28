@@ -491,6 +491,15 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
             short_name = cs.takeLast(4), long_name = cs)))
         ownUser = (ownUser ?: User(id = _myId.value ?: "")).copy(long_name = cs, short_name = cs.takeLast(4), is_licensed = true)
     }
+    /** Sets the RTTTL tune the radio's buzzer plays for alerts (External Notification module). */
+    suspend fun setRingtone(rtttl: String): Result<Unit> = runCatching {
+        require(rtttl.length <= 230) { "The radio stores tunes up to 230 characters" }
+        admin(AdminMessage(set_ringtone_message = rtttl))
+    }
+
+    /** Asks the radio to play its current tune once (newer firmware; older radios ignore it). */
+    suspend fun playRingtone(): Result<Unit> = runCatching { admin(AdminMessage(play_ringtone_request = true)) }
+
     /** This radio's own user record (names, and the licensed flag once ham mode is on). */
     @Volatile var ownUser: User? = null; private set
     val isLicensed: Boolean get() = ownUser?.is_licensed == true

@@ -27,8 +27,8 @@ android {
         applicationId = "com.stpaulmesh.highbridge"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.5.3"
+        versionCode = 11
+        versionName = "0.6.0"
         ndk { abiFilters += listOf("arm64-v8a") }
         // Google Play's payments policy doesn't allow tip links for groups that aren't tax-exempt,
         // so the Play bundle is built with -Phb.play=true and leaves them out. Every other build shows them.
@@ -75,7 +75,12 @@ android {
     packaging { resources { excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/INDEX.LIST", "META-INF/DEPENDENCIES") } }
     // Room schema files let the migration test rebuild old database versions.
     // (Robolectric reads assets from the app variant, so they ride along in debug builds only.)
-    sourceSets { getByName("debug").assets.srcDir("$projectDir/schemas") }
+    sourceSets {
+        getByName("debug").assets.srcDir("$projectDir/schemas")
+        // The watch link uses Google Play services, so only the Play build gets the real one.
+        getByName("main").java.srcDir(if (project.hasProperty("hb.play")) "src/play/java" else "src/noplay/java")
+        if (project.hasProperty("hb.play")) listOf("debug", "release").forEach { getByName(it).manifest.srcFile("src/play/AndroidManifest.xml") }
+    }
 
     testOptions {
         unitTests.isReturnDefaultValues = true
@@ -86,6 +91,9 @@ android {
 }
 
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+
+// Google Play build only: the Wear OS link. Kept in its own file so F-Droid can delete it.
+if (project.hasProperty("hb.play")) apply(from = "play.gradle.kts")
 
 dependencies {
     implementation(project(":core-protocol"))
@@ -123,6 +131,8 @@ dependencies {
     implementation("no.nordicsemi.android:dfu:2.5.0")
 
     testImplementation("junit:junit:4.13.2")
+    // Real org.json for plain JVM tests (Android's is a stub there).
+    testImplementation("org.json:json:20240303")
     testImplementation("org.robolectric:robolectric:4.18.1")
     testImplementation("androidx.room:room-testing:2.6.1")
     testImplementation("androidx.test:core-ktx:1.6.1")

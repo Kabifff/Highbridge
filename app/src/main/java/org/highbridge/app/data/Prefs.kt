@@ -76,6 +76,15 @@ class Prefs(ctx: Context) {
     val haptics = state(sp.getString("haptics", "LIGHT") ?: "LIGHT")
     fun setHaptics(v: String) { haptics.value = v; save { putString("haptics", v) } }
 
+    val accent = state(sp.getString("accent", "COMO") ?: "COMO")
+    fun setAccent(v: String) { accent.value = v; save { putString("accent", v) } }
+    /** Tune played on the phone for new messages (RTTTL text), or blank for the normal notification sound. */
+    val messageTune = state(sp.getString("messageTune", "") ?: "")
+    fun setMessageTune(v: String) { messageTune.value = v; save { putString("messageTune", v) } }
+    /** Automation rules as JSON. */
+    val automations = state(sp.getString("automations", "[]") ?: "[]")
+    fun setAutomations(v: String) { automations.value = v; save { putString("automations", v) } }
+
     fun setAutoStationId(v: Boolean) { autoStationId.value = v; save { putBoolean("autoStationId", v) } }
 
     private fun save(block: SharedPreferences.Editor.() -> Unit) = sp.edit().apply(block).apply()

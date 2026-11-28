@@ -49,7 +49,9 @@ object MessageNotifier {
             .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ).setShowsUserInterface(false).build()
         val n = NotificationCompat.Builder(ctx, RadioManager.CH_MESSAGES).setSmallIcon(R.drawable.ic_stat_highbridge)
             .setStyle(style).setContentIntent(open).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .addAction(reply).addInvisibleAction(read).build()
+            .addAction(reply).addInvisibleAction(read)
+            .setSilent(HighbridgeApp.instance.prefs.messageTune.value.isNotBlank())   // the chosen tune plays instead
+            .build()
         runCatching { NotificationManagerCompat.from(ctx).notify(id, n) }
     }
 

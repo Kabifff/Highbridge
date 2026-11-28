@@ -1,7 +1,7 @@
 # Highbridge feature comparison
 
 How Highbridge compares with the official Meshtastic and MeshCore apps and with MeshWave,
-as of version 0.5.0 (November 2026). ✓ = has it, ◐ = partly, ✗ = not yet.
+as of version 0.6.0 (November 2026). ✓ = has it, ◐ = partly, ✗ = not yet.
 
 ## Meshtastic (official Android app)
 
@@ -89,6 +89,19 @@ as of version 0.5.0 (November 2026). ✓ = has it, ◐ = partly, ✗ = not yet.
 | Maidenhead grid squares | ✓ | You, nodes and the compass |
 | Call sign lookup | ✓ | callook.info (FCC) and HamDB |
 | MeshCom | ✗ | Its own ham mesh network, mostly in Europe |
+
+## Paid extras in other apps, free in Highbridge
+
+| Feature | Elsewhere | Highbridge |
+|---|---|---|
+| Rangefinder (distance and height with the camera) | MeshWave MeshRange (paid) | ✓ Free |
+| Accent color themes | Socialmesh Theme Pack (paid) | ✓ 12, free |
+| RTTTL ringtone library, send a tune to the radio | Socialmesh Ringtone Pack (paid) | ✓ Free |
+| Automations and scheduled broadcasts | Socialmesh (paid) | ✓ Free |
+| Webhooks and IFTTT | Socialmesh (paid) | ✓ Free |
+| Watch app | PommeCore Apple Watch (paid) | ✓ Wear OS, free (Google Play edition) |
+| Line of sight over terrain | MeshCore, PommeCore | ✓ Free, with Fresnel zone |
+| Cloud sync | Socialmesh (paid) | Encrypted backup file instead |
 
 ## Only in Highbridge
 
