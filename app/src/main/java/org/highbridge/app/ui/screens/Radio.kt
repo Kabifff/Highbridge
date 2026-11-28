@@ -2,6 +2,9 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.Check
 import org.highbridge.app.ui.tr
 
 import org.highbridge.app.ui.toast
@@ -84,6 +87,7 @@ import java.util.Locale
 
 
 /** Region picker for every LoRa band, plus radio settings for each connected protocol. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun RadioScreen() {
     val navRadio = LocalNav.current
@@ -100,6 +104,8 @@ fun RadioScreen() {
     var power by remember { mutableIntStateOf(0) }
     var mcPreset by remember { mutableStateOf(MeshCorePresets.suggestFor(country) ?: MeshCorePresets.ALL.first()) }
     var mcPower by remember { mutableIntStateOf(20) }
+    var joining by remember { mutableStateOf(false) }
+    var joinReport by remember { mutableStateOf<List<Pair<Boolean, String>>?>(null) }
 
     val groups = listOf(
         "Americas" to setOf("US", "BR_902"),
@@ -121,15 +127,36 @@ fun RadioScreen() {
                         fontWeight = FontWeight.Bold)
                     Text(if (suggested != null) "We suggest ${suggested.name} · ${suggested.bandLabel}. Pick a different region if you're traveling or near a border. Only use the band that's legal where your radio is."
                         else tr("LoRa bands differ by country. Choose your region below."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (suggested != null) Button(onClick = { app.prefs.setRegion(suggested) }) { Text("Use ${suggested.name}") }
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (suggested != null) {
+                            val using = region == suggested
+                            // Picks the band for this screen and the airtime meter; "Apply" below sends it to a radio.
+                            if (using) androidx.compose.material3.FilledTonalButton(colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer), onClick = { ctx.toast("${suggested.label} (${suggested.bandLabel}) is already selected. Apply it to a radio below.") }) {
+                                Icon(Icons.Filled.Check, null); Text(" Using ${suggested.name}") }
+                            else Button(onClick = {
+                                app.prefs.setRegion(suggested); org.highbridge.app.ui.Haptics.confirm(ctx)
+                                ctx.toast(long = true, message = "Region set to ${suggested.label} (${suggested.bandLabel}). Apply it to your radio below.")
+                            }) { Text("Use ${suggested.name}") }
+                        }
                         OutlinedButton(onClick = {
-                            app.prefs.setRegion(MeshtasticRegion.US); preset = MeshtasticModemPreset.MEDIUM_FAST; mcPreset = StPaulQuickJoin.meshCore
+                            joining = true; preset = MeshtasticModemPreset.MEDIUM_FAST; mcPreset = StPaulQuickJoin.meshCore
                             scope.launch {
-                                app.radios.meshtastic?.applyLoRa(StPaulQuickJoin.meshtastic)?.let { r -> ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "Meshtastic set to US · Medium Fast") }
-                                app.radios.meshcore?.applyPreset(StPaulQuickJoin.meshCore, 22)?.let { r -> ctx.toast(long = true, message = r.exceptionOrNull()?.message ?: "MeshCore set to USA / Canada") }
+                                joinReport = app.radios.joinSaintPaul(); joining = false
+                                if (joinReport.orEmpty().all { it.first }) org.highbridge.app.ui.Haptics.confirm(ctx)
                             }
-                        }) { Text(tr("Join Saint Paul Mesh")) }
+                        }, enabled = !joining) {
+                            if (joining) androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            else if (joinReport != null) Icon(Icons.Filled.Check, null)
+                            Text((if (joining) "  " else if (joinReport != null) " " else "") + tr(if (joinReport != null && !joining) "Joined Saint Paul Mesh" else "Join Saint Paul Mesh"))
+                        }
+                    }
+                    joinReport?.let { lines ->
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            lines.forEach { (ok, text) ->
+                                Text((if (ok) "✓ " else "⚠ ") + text, style = MaterialTheme.typography.bodySmall,
+                                    color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                            }
+                        }
                     }
                 }
                 Gap(12)
@@ -164,7 +191,7 @@ fun RadioScreen() {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(tr("Preset: "), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         TextButton(onClick = { open = true }) { Text(preset.label) }
-                        DropdownMenu(open, { open = false }) { MeshtasticModemPreset.entries.forEach { p -> DropdownMenuItem({ Text(p.label) }, { preset = p; open = false }) } }
+                        org.highbridge.app.ui.HbDropdownMenu(open, { open = false }) { MeshtasticModemPreset.entries.forEach { p -> DropdownMenuItem({ Text(p.label) }, { preset = p; open = false }) } }
                     }
                     Text("Transmit power: ${if (power == 0) "region maximum (${region.powerLimitDbm} dBm)" else "$power dBm"}")
                     Slider(power.toFloat(), { power = it.toInt() }, valueRange = 0f..region.powerLimitDbm.toFloat().coerceAtLeast(1f))
@@ -177,7 +204,7 @@ fun RadioScreen() {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { ProtocolBadge(ProtocolType.MESHCORE); Text(tr("MeshCore radio preset"), fontWeight = FontWeight.Bold) }
                     var open by remember { mutableStateOf(false) }
                     TextButton(onClick = { open = true }) { Text(mcPreset.name + " · %.3f MHz".format(mcPreset.frequencyMHz)) }
-                    DropdownMenu(open, { open = false }) { MeshCorePresets.ALL.forEach { p -> DropdownMenuItem({ Text("${p.name} · %.3f MHz".format(p.frequencyMHz)) }, { mcPreset = p; open = false }) } }
+                    org.highbridge.app.ui.HbDropdownMenu(open, { open = false }) { MeshCorePresets.ALL.forEach { p -> DropdownMenuItem({ Text("${p.name} · %.3f MHz".format(p.frequencyMHz)) }, { mcPreset = p; open = false }) } }
                     Text("SF ${mcPreset.spreadingFactor} · BW ${mcPreset.bandwidthKhz} kHz · CR ${mcPreset.codingRate}", fontSize = 12.sp)
                     val problems = MeshCorePresets.validate(mcPreset)
                     if (problems.isEmpty()) Text("Fits inside the ${mcPreset.band.name} band", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -215,7 +242,7 @@ fun RadioScreen() {
                     }
                     McConfigBackup()
                     val link = app.radios.meshcore?.myContactUri()
-                    if (showQr && link != null) androidx.compose.material3.AlertDialog(onDismissRequest = { showQr = false },
+                    if (showQr && link != null) org.highbridge.app.ui.HbAlertDialog(onDismissRequest = { showQr = false },
                         title = { Text(tr("Your MeshCore contact")) },
                         text = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             val bmp = remember(link) { com.journeyapps.barcodescanner.BarcodeEncoder().encodeBitmap(link, com.google.zxing.BarcodeFormat.QR_CODE, 640, 640) }
@@ -341,7 +368,7 @@ fun ConnectScreen() {
                 f.guess?.let { ProtocolBadge(it) }
                 Column(Modifier.weight(1f)) { Text(f.name, fontWeight = FontWeight.Bold); Text("${f.device.address} · ${f.rssi} dBm", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (busy == f.device.address) Text(tr("Connecting…"), fontSize = 12.sp)
-                DropdownMenu(pick, { pick = false }) {
+                org.highbridge.app.ui.HbDropdownMenu(pick, { pick = false }) {
                     (supportedProtocols + ProtocolType.APRS).forEach { p ->
                         DropdownMenuItem({ Text(if (p == ProtocolType.APRS) "Connect as APRS TNC (KISS)${if (p == f.guess) " ✓" else ""}"
                             else "Connect as ${p.name.lowercase().replaceFirstChar { it.uppercase() }}${if (p == ProtocolType.RETICULUM) " (RNode)" else ""}${if (p == f.guess) " ✓" else ""}") }, {
@@ -418,7 +445,7 @@ fun ConnectScreen() {
                 }
                 Gap(24)
             }
-            if (askDownload) androidx.compose.material3.AlertDialog(onDismissRequest = { askDownload = false },
+            if (askDownload) org.highbridge.app.ui.HbAlertDialog(onDismissRequest = { askDownload = false },
                 title = { Text(tr("Download Reticulum?")) },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(tr("Highbridge talks to Reticulum using the official RNS and LXMF packages by Mark Qvist. They aren't built into Highbridge, because their license (the Reticulum License) has rules the GPL doesn't allow inside a GPL app."))

@@ -81,7 +81,7 @@ fun NewChatDialog(onDismiss: () -> Unit) {
         }
     }
 
-    AlertDialog(onDismissRequest = onDismiss,
+    org.highbridge.app.ui.HbAlertDialog(onDismissRequest = onDismiss,
         title = { Text(when (mode) {
             NewChatMode.MENU -> "New chat"
             NewChatMode.DIRECT -> "Message someone"
@@ -186,7 +186,7 @@ fun ChannelActions(protocol: ProtocolType, slot: Int, title: String) {
     if (entity != null) IconButton(onClick = { share = true }) { Icon(Icons.Filled.QrCode2, "Share channel") }
     if (slot > 0) IconButton(onClick = { leave = true }) { Icon(Icons.AutoMirrored.Filled.Logout, "Leave channel") }
     if (share && entity != null) ChannelQrDialog(EncryptedChannel.fromEntity(entity)) { share = false }
-    if (leave) AlertDialog(onDismissRequest = { leave = false },
+    if (leave) org.highbridge.app.ui.HbAlertDialog(onDismissRequest = { leave = false },
         title = { Text("Leave $title?") },
         text = { Text(tr("This removes the channel from your radio and forgets its key. Your message history stays. You can rejoin later with its code.")) },
         confirmButton = { TextButton(onClick = {
@@ -204,7 +204,7 @@ fun ChannelQrDialog(c: EncryptedChannel, onDismiss: () -> Unit) {
     val code = if (c.protocol == ProtocolType.MESHCORE) EncryptedChannel.toMeshCoreUri(c) else c.toShareUri()
     val bmp = remember(code) { BarcodeEncoder().encodeBitmap(code, BarcodeFormat.QR_CODE, 720, 720) }
     fun send(text: String) = ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share channel"))
-    AlertDialog(onDismissRequest = onDismiss,
+    org.highbridge.app.ui.HbAlertDialog(onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done")) } },
         dismissButton = { TextButton(onClick = { send(code) }) { Text(tr("Share link")) } },
         title = { Text(c.name) },

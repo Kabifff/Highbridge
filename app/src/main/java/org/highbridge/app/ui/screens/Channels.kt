@@ -132,7 +132,7 @@ fun ChannelsScreen(importUri: String?) {
 
     showing?.let { c -> ChannelQrDialog(c) { showing = null } }
     pendingImport?.let { c ->
-        AlertDialog(onDismissRequest = { pendingImport = null },
+        org.highbridge.app.ui.HbAlertDialog(onDismissRequest = { pendingImport = null },
             confirmButton = { TextButton(onClick = { pendingImport = null; scope.launch { app.radios.applyChannel(c).let { ctx.toast(it.exceptionOrNull()?.message ?: "Joined ${c.name}", long = true) } } }) { Text(tr("Join")) } },
             dismissButton = { TextButton(onClick = { pendingImport = null }) { Text(tr("Cancel")) } },
             title = { Text("Join ${c.name}?") }, text = { Text("${c.protocol.name.lowercase().replaceFirstChar { it.uppercase() }} channel. " +

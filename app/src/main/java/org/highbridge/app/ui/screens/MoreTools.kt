@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import androidx.compose.material.icons.filled.Menu
 import org.highbridge.app.ui.tr
 
 import android.Manifest
@@ -311,6 +312,8 @@ fun ArScreen() {
                 TextButton(onClick = { nav.popBackStack() }) { Text(tr("‹ Back"), color = Color.White) }
                 Text("%.0f° %s".format(azimuth, Geo.compassPoint(azimuth.toDouble())), Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.Bold)
                 FilterChip(showLandmarks, { showLandmarks = !showLandmarks }, { Text(tr("Landmarks"), color = Color.White) })
+                org.highbridge.app.ui.LocalOpenDrawer.current?.let { open ->
+                    androidx.compose.material3.IconButton(onClick = open) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Menu, "Menu", tint = Color.White) } }
             }
             if (me == null) Text(tr("Waiting for your location…"), color = Color.White, fontSize = 12.sp)
             if (showLandmarks) Text(tr("Landmarks © OpenStreetMap contributors (your location is sent rounded to about 1 km)"), color = Color.White, fontSize = 10.sp)

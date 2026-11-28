@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui
 
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +56,8 @@ fun HbHeader(title: String, subtitle: String? = null, onBack: (() -> Unit)? = nu
                 if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             actions()
+            // The side menu, in the same place on every screen.
+            LocalOpenDrawer.current?.let { open -> IconButton(onClick = open) { Icon(androidx.compose.material.icons.Icons.Filled.Menu, "Menu") } }
         }
         if (skyline) Skyline(Modifier.fillMaxWidth().height(34.dp))
         Box(Modifier.fillMaxWidth().height(3.dp).background(StPaulMeshPalette.Gold))

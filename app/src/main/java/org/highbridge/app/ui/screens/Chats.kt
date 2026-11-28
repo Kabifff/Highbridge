@@ -130,7 +130,6 @@ fun ChatsScreen(openDrawer: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         HbHeader("Highbridge", "West 7th · ${radios.size} radio${if (radios.size == 1) "" else "s"} connected", skyline = true, actions = {
             IconButton(onClick = { nav.navigate("search") }) { Icon(Icons.Filled.Search, "Search messages") }
-            IconButton(onClick = openDrawer) { Icon(Icons.Filled.Menu, "Menu") }
         })
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (radios.isEmpty()) TextButton(onClick = { nav.navigate("connect") }) { Text(tr("Connect a radio")) }
@@ -256,7 +255,7 @@ fun ChatScreen(conversation: String) {
                     Icon(when (notifyLevel) { "NONE" -> Icons.Filled.NotificationsOff; "MENTIONS" -> Icons.Filled.AlternateEmail; else -> Icons.Filled.Notifications },
                         tr("Notifications for this chat"))
                 }
-                androidx.compose.material3.DropdownMenu(bell, { bell = false }) {
+                org.highbridge.app.ui.HbDropdownMenu(bell, { bell = false }) {
                     listOf("ALL" to "Every message", "MENTIONS" to "Only when someone @mentions me", "NONE" to "Off (SOS still alerts)").forEach { (k, label) ->
                         androidx.compose.material3.DropdownMenuItem({ Text((if (notifyLevel == k) "✓ " else "") + tr(label)) },
                             { app.prefs.setNotifyLevel(conversation, k); notifyLevel = k; bell = false })
@@ -289,7 +288,7 @@ fun ChatScreen(conversation: String) {
                     Icon(if (live) Icons.Filled.RecordVoiceOver else Icons.Filled.Add, "More: quick replies, photo, live talk",
                         tint = if (live) MaterialTheme.colorScheme.tertiary else LocalContentColor.current)
                 }
-                androidx.compose.material3.DropdownMenu(more, { more = false }) {
+                org.highbridge.app.ui.HbDropdownMenu(more, { more = false }) {
                     androidx.compose.material3.DropdownMenuItem({ Text(tr("Quick replies")) }, { more = false; quick = !quick }, leadingIcon = { Icon(Icons.Filled.Bolt, null) })
                     if (target.protocol != ProtocolType.RETICULUM && target.protocol != ProtocolType.APRS) {
                         androidx.compose.material3.DropdownMenuItem({ Text(tr("Photo")) }, { more = false; pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
@@ -341,7 +340,7 @@ fun ChatScreen(conversation: String) {
     }
     actionsFor?.let { m ->
         val clip = androidx.compose.ui.platform.LocalClipboardManager.current
-        androidx.compose.material3.AlertDialog(onDismissRequest = { actionsFor = null },
+        org.highbridge.app.ui.HbAlertDialog(onDismissRequest = { actionsFor = null },
             title = { Text(m.text, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 15.sp) },
             text = { Column {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -11,6 +11,12 @@ import java.util.Locale
 object I18n {
     fun lang(): String = when (Locale.getDefault().language) { "es" -> "es"; "nb", "no", "nn" -> "nb"; else -> "en" }
     val es: Map<String, String> = hashMapOf(
+        "Vibrate on taps" to "Vibrar al tocar",
+        "Off" to "Apagado",
+        "Light" to "Suave",
+        "Medium" to "Media",
+        "Strong" to "Fuerte",
+        "Joined Saint Paul Mesh" to "Unido a Saint Paul Mesh",
         "A solar node up high can cover a whole neighborhood. If you own or manage a building, or know someone who does, especially on high ground, get in touch. Nodes are small, run on sunlight and need no wiring." to "Un nodo solar en lo alto puede cubrir todo un vecindario. Si tienes o administras un edificio, o conoces a alguien que lo haga, sobre todo en terreno alto, escríbenos. Los nodos son pequeños, funcionan con luz solar y no necesitan cables.",
         "About us" to "Quiénes somos",
         "All kinds of radio (St. Paul Radio Authority)" to "Todo tipo de radio (St. Paul Radio Authority)",
@@ -496,6 +502,12 @@ object I18n {
         "Choose English, Spanish or Norwegian for Highbridge" to "Elige inglés, español o noruego para Highbridge",
     )
     val nb: Map<String, String> = hashMapOf(
+        "Vibrate on taps" to "Vibrer ved trykk",
+        "Off" to "Av",
+        "Light" to "Lett",
+        "Medium" to "Middels",
+        "Strong" to "Sterk",
+        "Joined Saint Paul Mesh" to "Med i Saint Paul Mesh",
         "A solar node up high can cover a whole neighborhood. If you own or manage a building, or know someone who does, especially on high ground, get in touch. Nodes are small, run on sunlight and need no wiring." to "En solcellenode høyt oppe kan dekke et helt nabolag. Eier eller forvalter du en bygning, eller kjenner noen som gjør det, særlig på høyt terreng, ta kontakt. Nodene er små, går på sollys og trenger ingen kabler.",
         "About us" to "Om oss",
         "All kinds of radio (St. Paul Radio Authority)" to "Alle slags radio (St. Paul Radio Authority)",

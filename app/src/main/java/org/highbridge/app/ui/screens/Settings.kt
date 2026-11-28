@@ -135,6 +135,14 @@ fun SettingsScreen() {
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Share my position with the mesh"), Modifier.weight(1f)); Switch(share, { p.setShareLocation(it) }) }
                 Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Metric units"), Modifier.weight(1f)); Switch(metric, { p.setMetric(it) }) }
+                val haptic by p.haptics.collectAsState()
+                Text(tr("Vibrate on taps"))
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    org.highbridge.app.ui.Haptics.LEVELS.forEach { (k, label) ->
+                        androidx.compose.material3.FilterChip(haptic == k, { p.setHaptics(k); org.highbridge.app.ui.Haptics.confirm(ctx, k) }, { Text(tr(label)) })
+                    }
+                }
                 if (android.os.Build.VERSION.SDK_INT >= 33) Row(Modifier.fillMaxWidth().clickable {
                     runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_LOCALE_SETTINGS, android.net.Uri.parse("package:" + ctx.packageName))) }
                 }, verticalAlignment = Alignment.CenterVertically) {

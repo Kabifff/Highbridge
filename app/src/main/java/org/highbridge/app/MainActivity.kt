@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app
 
+import org.highbridge.app.ui.hapticTaps
 import org.highbridge.app.ui.tr
 
 import org.highbridge.app.ui.toast
@@ -142,7 +143,7 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
     LaunchedEffect(onboarded) { if (onboarded) runCatching { app.radios.reconnectRemembered() } }
 
     CompositionLocalProvider(LocalNav provides nav) {
-        ModalNavigationDrawer(drawerState = drawer, gesturesEnabled = onboarded, drawerContent = {
+        ModalNavigationDrawer(drawerState = drawer, gesturesEnabled = onboarded, modifier = Modifier.hapticTaps(), drawerContent = {
             ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.background) {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     Skyline(Modifier.statusBarsPadding().fillMaxWidth().height(40.dp))
@@ -170,6 +171,8 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
         }) {
             val back by nav.currentBackStackEntryAsState()
             val route = back?.destination?.route
+            androidx.compose.runtime.CompositionLocalProvider(org.highbridge.app.ui.LocalOpenDrawer provides
+                (if (onboarded && route != "welcome") ({ scope.launch { drawer.open() } }) else null)) {
             Scaffold(containerColor = MaterialTheme.colorScheme.background, bottomBar = {
                 if (onboarded && tabs.any { it.route == route }) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     tabs.forEach { t ->
@@ -226,6 +229,7 @@ fun HighbridgeRoot(pendingRoute: String?, consumed: () -> Unit) {
                     // After NavHost, so a notification or link that opens the app never navigates before the graph exists.
                     LaunchedEffect(pendingRoute) { pendingRoute?.let { runCatching { nav.navigate(it) }; consumed() } }
                 }
+            }
             }
         }
     }

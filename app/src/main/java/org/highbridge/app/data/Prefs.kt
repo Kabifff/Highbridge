@@ -69,6 +69,13 @@ class Prefs(ctx: Context) {
     fun setAprsBeacon(v: Boolean) { aprsBeacon.value = v; save { putBoolean("aprsBeacon", v) } }
     fun setAprsGateway(v: Boolean) { aprsGateway.value = v; save { putBoolean("aprsGateway", v) } }
     fun setAprsGatewayRegs(v: String) { aprsGatewayRegs.value = v; save { putString("aprsGwRegs", v) } }
+    /** Networks still to set up for Saint Paul Mesh once their radio connects. */
+    val stPaulPending = state(sp.getStringSet("stPaulPending", emptySet())?.toSet() ?: emptySet())
+    fun setStPaulPending(v: Set<String>) { stPaulPending.value = v; save { putStringSet("stPaulPending", v) } }
+    /** Vibration on taps: OFF, LIGHT, MEDIUM or STRONG. */
+    val haptics = state(sp.getString("haptics", "LIGHT") ?: "LIGHT")
+    fun setHaptics(v: String) { haptics.value = v; save { putString("haptics", v) } }
+
     fun setAutoStationId(v: Boolean) { autoStationId.value = v; save { putBoolean("autoStationId", v) } }
 
     private fun save(block: SharedPreferences.Editor.() -> Unit) = sp.edit().apply(block).apply()

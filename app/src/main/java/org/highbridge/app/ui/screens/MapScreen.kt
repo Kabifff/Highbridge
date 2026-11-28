@@ -45,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -124,7 +125,7 @@ fun MapScreen() {
     Column(Modifier.fillMaxSize()) {
         HbHeader(tr("Map"), "${nodes.count { it.lat != null }} nodes with a position", actions = {
             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Layers, "Map style") }
-            DropdownMenu(menu, { menu = false }) {
+            org.highbridge.app.ui.HbDropdownMenu(menu, { menu = false }) {
                 listOf("STANDARD" to "Street", "TOPO" to "Topographic", "USGS_TOPO" to "USGS topo (US)", "SATELLITE" to "Satellite (US)",
                     "HYBRID" to "Hybrid: satellite with labels (US)", "TERRAIN" to "Terrain: shaded relief (US)", "HYDRO" to "Water features (US)",
                     "NIGHT" to "Night").forEach { (k, l) -> DropdownMenuItem({ Text(l) }, { app.prefs.setMapStyle(k); menu = false }) }
@@ -148,7 +149,7 @@ fun MapScreen() {
             item { FilterChip(showRoutes, { showRoutes = !showRoutes }, { Text(tr("Traceroutes")) }) }
             if (predicted != null) item { FilterChip(true, { org.highbridge.app.pro.LinkBudget.shownOnMap.value = null }, { Text(tr("Prediction ✕")) }) }
         }
-        Box(Modifier.weight(1f)) {
+        Box(Modifier.weight(1f).clipToBounds()) {   // osmdroid can draw outside its bounds and cover the chips above
             AndroidView({ mapView }, Modifier.fillMaxSize(), update = { mv ->
                 applyStyle(mv, style, mbtiles)
                 mv.overlays.clear()
@@ -188,9 +189,9 @@ fun MapScreen() {
             })
             IconButton(onClick = { me?.let { mapView.controller.animateTo(GeoPoint(it.first, it.second)) } ?: mapView.controller.animateTo(SAINT_PAUL) },
                 Modifier.align(Alignment.TopEnd).padding(12.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))) { Icon(Icons.Filled.MyLocation, "Center on me") }
-            Row(Modifier.align(Alignment.BottomStart).padding(10.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp)).padding(8.dp, 4.dp),
+            Row(Modifier.align(Alignment.BottomStart).padding(start = 10.dp, end = 10.dp, bottom = 26.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp)).padding(8.dp, 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("● Meshtastic", color = StPaulMeshPalette.Meshtastic); Text("● MeshCore", color = StPaulMeshPalette.MeshCore); Text("● Reticulum", color = StPaulMeshPalette.Reticulum)
+                Text("● Meshtastic", color = StPaulMeshPalette.Meshtastic); Text("● MeshCore", color = StPaulMeshPalette.MeshCore); if (org.highbridge.app.rns.ReticulumSupport.AVAILABLE) Text("● Reticulum", color = StPaulMeshPalette.Reticulum)
                 if (nodes.any { it.protocol == "APRS" }) Text("● APRS", color = StPaulMeshPalette.Aprs)
             }
             Text(if (style in setOf("SATELLITE", "USGS_TOPO", "HYBRID", "TERRAIN", "HYDRO")) "USGS The National Map" else "© OpenStreetMap contributors",
@@ -199,7 +200,7 @@ fun MapScreen() {
     }
     dropAt?.let { p -> DropWaypointDialog(p.latitude, p.longitude) { dropAt = null } }
     openWaypoint?.let { w ->
-        androidx.compose.material3.AlertDialog(onDismissRequest = { openWaypoint = null },
+        org.highbridge.app.ui.HbAlertDialog(onDismissRequest = { openWaypoint = null },
             title = { Text(w.name.ifBlank { "Waypoint" }) },
             text = { Text(listOfNotNull(w.description.takeIf { it.isNotBlank() }, "%.5f, %.5f".format(w.lat, w.lon),
                 if (w.fromId == "me") "Shared by you" else "Shared by ${w.fromId}",
@@ -224,7 +225,7 @@ internal fun DropWaypointDialog(lat: Double, lon: Double, onDone: () -> Unit) {
     var desc by remember { mutableStateOf("") }
     var hours by remember { mutableStateOf(24) }
     val canShare = ProtocolType.MESHTASTIC in app.radios.radios.collectAsState().value
-    androidx.compose.material3.AlertDialog(onDismissRequest = onDone,
+    org.highbridge.app.ui.HbAlertDialog(onDismissRequest = onDone,
         title = { Text(tr("Drop a pin")) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("%.5f, %.5f".format(lat, lon), style = MaterialTheme.typography.labelMedium)

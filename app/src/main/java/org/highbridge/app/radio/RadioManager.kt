@@ -57,6 +57,9 @@ import org.highbridge.core.protocol.MeshPacket
 import org.highbridge.core.protocol.MeshPayload
 import org.highbridge.core.protocol.MeshRadio
 import org.highbridge.core.protocol.ProtocolType
+import org.highbridge.core.protocol.StPaulQuickJoin
+import org.highbridge.core.protocol.MeshtasticRegion
+import kotlinx.coroutines.flow.first
 import org.highbridge.core.protocol.RadioEvent
 import org.highbridge.core.protocol.link.BleNusStream
 import org.highbridge.core.protocol.link.StreamLink
@@ -264,6 +267,16 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         val r = radio.connect("")
         if (r.isFailure) return r
         if (radio is MeshCoreRadio && prefs.mcRegion.value.isNotBlank()) scope.launch { radio.setRegionScope(prefs.mcRegion.value) }
+        // "Join Saint Paul Mesh" tapped before this radio was connected: finish it now.
+        if (radio.protocol.name in prefs.stPaulPending.value) scope.launch {
+            kotlinx.coroutines.withTimeoutOrNull(45_000) { radio.channels.first { it.isNotEmpty() } }
+            delay(1_500)
+            val lines = joinSaintPaulOn(radio.protocol)
+            if (lines.all { it.first }) prefs.setStPaulPending(prefs.stPaulPending.value - radio.protocol.name)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(ctx, "Saint Paul Mesh: " + lines.joinToString("; ") { it.second }, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
         _radios.value = _radios.value + (radio.protocol to radio)
         jobs[radio.protocol] = listOf(
             scope.launch { radio.incomingPackets.collect { runCatching { onPacket(it) } } },
@@ -493,6 +506,46 @@ class RadioManager(private val ctx: Context, private val dao: MeshDao, private v
         dao.insertMessage(MessageEntity(packetId = "media-${file.name}", protocol = m.protocol.name, conversation = conv, fromId = m.senderId,
             fromName = m.senderName, text = label, timeMs = System.currentTimeMillis(), outgoing = false, mediaType = m.mediaType.name, mediaPath = file.absolutePath))
         notifyMessage(conv, m.senderName, label)
+    }
+
+    // ------------------------------------------------------------------ Join Saint Paul Mesh
+
+    /**
+     * Sets up for the local mesh: US band, Meshtastic Medium Fast with the West7th channel, MeshCore USA/Canada
+     * with the West Seventh channel. Radios not connected yet are set up as soon as they connect.
+     * Returns one line per step: (done, what happened).
+     */
+    suspend fun joinSaintPaul(): List<Pair<Boolean, String>> {
+        prefs.setRegion(MeshtasticRegion.US)
+        val out = mutableListOf(true to "Region set to United States (902–928 MHz)")
+        val pending = mutableSetOf<String>()
+        for (p in listOf(ProtocolType.MESHTASTIC, ProtocolType.MESHCORE)) {
+            if (radio(p) == null) { pending += p.name; out += true to "${if (p == ProtocolType.MESHTASTIC) "Meshtastic" else "MeshCore"}: will be set up when you connect that radio" }
+            else { val lines = joinSaintPaulOn(p); out += lines; if (!lines.all { it.first }) pending += p.name }
+        }
+        prefs.setStPaulPending(pending)
+        return out
+    }
+
+    /** Channel first, then radio settings, because a settings change can restart the radio. */
+    suspend fun joinSaintPaulOn(p: ProtocolType): List<Pair<Boolean, String>> {
+        val out = mutableListOf<Pair<Boolean, String>>()
+        when (p) {
+            ProtocolType.MESHTASTIC -> {
+                val mt = meshtastic ?: return listOf(false to "Meshtastic radio not connected")
+                out += applyChannel(StPaulQuickJoin.meshtasticChannel()).fold({ true to "Meshtastic: West7th channel added (slot ${it.slotIndex})" }, { false to "Meshtastic channel: ${it.message}" })
+                val q = StPaulQuickJoin.meshtastic
+                out += if (mt.usesLoRa(q.region.code, q.preset.code)) true to "Meshtastic: already on US · Medium Fast"
+                else mt.applyLoRa(q).fold({ true to "Meshtastic: set to US · Medium Fast (the radio restarts)" }, { false to "Meshtastic settings: ${it.message}" })
+            }
+            ProtocolType.MESHCORE -> {
+                val mc = meshcore ?: return listOf(false to "MeshCore radio not connected")
+                out += applyChannel(StPaulQuickJoin.meshCoreChannel()).fold({ true to "MeshCore: West Seventh channel added (slot ${it.slotIndex})" }, { false to "MeshCore channel: ${it.message}" })
+                out += mc.applyPreset(StPaulQuickJoin.meshCore, 22).fold({ true to "MeshCore: set to USA / Canada" }, { false to "MeshCore settings: ${it.message}" })
+            }
+            else -> {}
+        }
+        return out
     }
 
     // ------------------------------------------------------------------ APRS gateway and station ID

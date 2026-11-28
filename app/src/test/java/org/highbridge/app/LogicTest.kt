@@ -303,6 +303,13 @@ fun everything() = runBlocking {
     check("Gateway ignores ordinary chat", aprsGw.onMeshDirect("MESHTASTIC:!abcd", "see you at 5", now = 2_000_000) == org.highbridge.app.aprs.AprsGateway.Action.None &&
         aprsGw.meshKeyFor("N0CALL-7") == "MESHTASTIC:!abcd")
 
+    // Saint Paul Mesh local channels match the ones published on stpaulmesh.com
+    val west7th = org.highbridge.core.protocol.StPaulQuickJoin.meshtasticChannel()
+    val urlPsk = java.util.Base64.getUrlDecoder().decode("CisSIIjOOla7v4k2ESZuDWskknSHhazkzxIJR4xOQJt7KofsGgdXZXN0N3Ro").copyOfRange(4, 36)
+    check("West7th channel key matches the site's channel link", west7th.name == "West7th" && west7th.rawKeyBytes().contentEquals(urlPsk))
+    val west7 = org.highbridge.core.protocol.StPaulQuickJoin.meshCoreChannel()
+    check("West Seventh MeshCore secret is 16 bytes", west7.name == "West Seventh" && west7.rawKeyBytes().size == 16 && west7.rawKeyBytes()[0] == 0x56.toByte())
+
     coroutineContext.cancelChildren()
     println(if (fails == 0) "ALL PASSED" else "$fails FAILED")
     org.junit.Assert.assertEquals(0, fails)

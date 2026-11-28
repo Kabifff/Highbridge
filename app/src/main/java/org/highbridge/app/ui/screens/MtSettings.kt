@@ -254,7 +254,7 @@ fun MeshtasticSettingsScreen(target: String? = null) {
         item { Text(tr("Settings appear after the radio finishes sending them, a few seconds after connecting."), Modifier.padding(20.dp), fontSize = 12.sp) }
     }
     confirm?.let { (q, action) ->
-        AlertDialog(onDismissRequest = { confirm = null }, title = { Text(tr("Are you sure?")) }, text = { Text(q) },
+        org.highbridge.app.ui.HbAlertDialog(onDismissRequest = { confirm = null }, title = { Text(tr("Are you sure?")) }, text = { Text(q) },
             confirmButton = { TextButton(onClick = { confirm = null; scope.launch { ctx.toast(action().exceptionOrNull()?.message ?: "Sent to the radio") } }) { Text(tr("Yes")) } },
             dismissButton = { TextButton(onClick = { confirm = null }) { Text(tr("Cancel")) } })
     }
@@ -299,7 +299,7 @@ private fun <E : Enum<E>> EnumPick(label: String, value: E, options: List<E>, on
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("$label: ", fontWeight = FontWeight.Bold)
         TextButton(onClick = { open = true }) { Text(value.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }) }
-        DropdownMenu(open, { open = false }) {
+        org.highbridge.app.ui.HbDropdownMenu(open, { open = false }) {
             options.filter { !it.name.startsWith("UNRECOGNIZED") && !it.name.contains("DEPRECATED") && it.name != "REPEATER" && it.name != "ROUTER_CLIENT" }.forEach { o ->
                 DropdownMenuItem({ Text(o.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }) }, { onPick(o); open = false })
             }

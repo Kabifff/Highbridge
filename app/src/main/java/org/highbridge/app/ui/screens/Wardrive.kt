@@ -79,7 +79,7 @@ fun WardriveScreen() {
     val samples by remember(st.session) { app.db.dao().wardriveSession(st.session) }.collectAsState(emptyList())
     var askShare by remember { mutableStateOf(false) }
     // Prominent disclosure and consent before any location leaves the phone.
-    if (askShare) androidx.compose.material3.AlertDialog(onDismissRequest = { askShare = false },
+    if (askShare) org.highbridge.app.ui.HbAlertDialog(onDismissRequest = { askShare = false },
         title = { Text(tr("Share your coverage?")) },
         text = { Text("While wardriving, Highbridge uses your precise location, also with the screen off, to record where your radio hears the mesh. " +
             "If you share, it sends stpaulmesh.com your position rounded to about 10 m, the time and signal readings, for the public coverage map. " +

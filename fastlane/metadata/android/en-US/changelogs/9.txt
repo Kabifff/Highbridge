@@ -1,0 +1,4 @@
+- Join Saint Paul Mesh now sets up each radio: US band, Meshtastic Medium Fast with the West7th channel, MeshCore USA/Canada with West Seventh. Radios you connect later are set up automatically
+- Use US shows that it worked
+- Optional vibration on taps: Off, Light, Medium or Strong in Settings
+- The menu button is on every screen

@@ -82,6 +82,8 @@ class MeshtasticRadio(private val link: MeshtasticLink) : MeshRadio {
     private val configDone = MutableStateFlow(false)
     private val channelSlots = sortedMapOf<Int, Channel>()
     private var loraConfig: Config.LoRaConfig? = null
+    /** True when the radio already uses [region] with [preset] (so re-applying would only cause a needless restart). */
+    fun usesLoRa(region: Int, preset: Int): Boolean = loraConfig?.let { it.use_preset && it.region.value == region && it.modem_preset.value == preset } == true
     private var heartbeat: Job? = null
 
     /** Current LoRa settings read from the radio, if known. */

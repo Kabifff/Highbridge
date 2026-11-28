@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kabifff and the Highbridge contributors
 package org.highbridge.app.ui.screens
 
+import org.highbridge.app.ui.toast
+import kotlinx.coroutines.launch
 import org.highbridge.app.ui.tr
 
 import androidx.compose.foundation.Canvas
@@ -58,9 +60,17 @@ fun WelcomeScreen() {
             Spacer(Modifier.height(8.dp))
             Button(onClick = { app.prefs.setOnboarded(true); nav.navigate("radio") { popUpTo("welcome") { inclusive = true } } },
                 Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp)) { Text(tr("Get started"), fontWeight = FontWeight.Bold) }
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
             OutlinedButton(onClick = {
-                app.prefs.setRegion(MeshtasticRegion.US); app.prefs.setOnboarded(true)
-                nav.navigate("connect") { popUpTo("welcome") { inclusive = true } }
+                // Saves the local setup; each radio gets it (band, preset and the local channel) as soon as it connects.
+                scope.launch {
+                    app.radios.joinSaintPaul()
+                    org.highbridge.app.ui.Haptics.confirm(ctx)
+                    ctx.toast(long = true, message = "Saint Paul Mesh settings saved. Connect a radio and they'll be applied, with the local channel added.")
+                    app.prefs.setOnboarded(true)
+                    nav.navigate("connect") { popUpTo("welcome") { inclusive = true } }
+                }
             }, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp)) { Text(tr("Join Saint Paul Mesh"), fontWeight = FontWeight.Bold) }
             Text(tr("No internet, cell service or account needed."), Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -34,6 +34,14 @@ data class MeshtasticLoRaConfig(
 object StPaulQuickJoin {
     val meshtastic = MeshtasticLoRaConfig(region = MeshtasticRegion.US, preset = MeshtasticModemPreset.MEDIUM_FAST, hopLimit = 3)
     val meshCore: MeshCoreRadioPreset = MeshCorePresets.ALL.first { it.name == "USA / Canada" }
+
+    // The local channels published on stpaulmesh.com (Meshtastic "West7th", MeshCore "West Seventh").
+    private fun hexToB64Url(hex: String) = java.util.Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() })
+    fun meshtasticChannel() = EncryptedChannel(protocol = ProtocolType.MESHTASTIC, slotIndex = EncryptedChannel.AUTO_SLOT, name = "West7th",
+        keyBase64Url = hexToB64Url("88ce3a56bbbf893611266e0d6b2492748785ace4cf1209478c4e409b7b2a87ec"))
+    fun meshCoreChannel() = EncryptedChannel(protocol = ProtocolType.MESHCORE, slotIndex = EncryptedChannel.AUTO_SLOT, name = "West Seventh",
+        keyBase64Url = hexToB64Url("56c32ef69e219934286ef2982c2db0fb"))
 }
 
 data class MeshCoreRadioConfig(

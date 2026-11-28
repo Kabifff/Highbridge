@@ -128,7 +128,7 @@ fun AprsScreen() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(tr("Map symbol") + ": ", fontWeight = FontWeight.Bold)
                 TextButton(onClick = { symOpen = true }) { Text(AprsFormat.symbolName(symbol)) }
-                DropdownMenu(symOpen, { symOpen = false }) {
+                org.highbridge.app.ui.HbDropdownMenu(symOpen, { symOpen = false }) {
                     AprsFormat.SYMBOLS.entries.distinctBy { it.value }.take(20).forEach { (k, v) -> DropdownMenuItem({ Text(v) }, { p.setAprsSymbol(k); symOpen = false }) }
                 }
             }
